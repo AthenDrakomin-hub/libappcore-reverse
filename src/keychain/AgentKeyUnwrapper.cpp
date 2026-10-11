@@ -270,13 +270,13 @@ bool AgentKeyUnwrapper::DecryptSFAuthenticated(const SFAuthenticatedData* auth_d
 
     CCCryptorStatus status = CCCryptorGCM(
         kCCDecrypt,
-        key, key_len,
-        NULL,  // IV (从 auth_data 中取)
-        auth_data->iv, 16,
-        NULL, 0,  // AAD
-        auth_data->data, auth_data->len,
-        plaintext, plaintext_len,
-        auth_data->tag, 16
+        kCCAlgorithmAES,       // 算法: AES
+        key, key_len,          // key
+        auth_data->iv, 16,     // IV
+        NULL, 0,               // AAD
+        auth_data->data, auth_data->len,  // 密文
+        plaintext, plaintext_len,        // 明文输出
+        auth_data->tag, 16    // GCM tag
     );
 
     if (status != kCCSuccess) {
