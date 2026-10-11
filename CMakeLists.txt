@@ -44,6 +44,9 @@ target_link_libraries(appcore
     "-framework Security"
     "-framework SystemConfiguration"
     "-framework MobileCoreServices"
+    "-framework IOKit"
+    "-framework CoreFoundation"
+    "-framework CommonCrypto"
     libarchive
     sqlite3
 )

