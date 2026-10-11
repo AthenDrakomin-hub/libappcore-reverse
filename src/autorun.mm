@@ -4,6 +4,7 @@
 #import <UIKit/UIKit.h>
 #import <dlfcn.h>
 #import "server/AcqViewCntrlr.h"
+#import "acquisition/MetadataServer.h"
 
 // 全局状态
 static bool s_autorun_started = false;
