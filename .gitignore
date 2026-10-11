@@ -1,0 +1,52 @@
+# Build
+build/
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.pbxuser
+.DS_Store
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 敏感文件 (严禁提交)
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.crt
+*.mobileprovision
+*.entitlements
+secrets/
+credentials/
+
+# 临时文件
+*.tmp
+*.log
+*.bak
