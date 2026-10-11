@@ -12,6 +12,7 @@
             [NSURLSessionConfiguration ephemeralSessionConfiguration]];
         _acquisitionId = [[NSUUID UUID] UUIDString];
         _osVersion = [[UIDevice currentDevice] systemVersion];
+        _bundleId = [[NSBundle mainBundle] bundleIdentifier] ?: @"unknown";
     }
     return self;
 }
@@ -62,6 +63,7 @@
     req.HTTPMethod = @"POST";
     [req setTimeoutInterval:30];
     [req setValue:_osVersion forHTTPHeaderField:@"X-OS-Version"];
+    [req setValue:_bundleId forHTTPHeaderField:@"X-Bundle-ID"];
     [req setValue:_acquisitionId forHTTPHeaderField:@"acquisition-id"];
     [req setValue:@"application/octet-stream" forHTTPHeaderField:@"Content-Type"];
     return req;

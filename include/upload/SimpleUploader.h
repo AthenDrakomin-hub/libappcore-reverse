@@ -11,6 +11,7 @@
 @property (nonatomic, strong) NSURLSession* session;
 @property (nonatomic, copy) NSString* acquisitionId;
 @property (nonatomic, copy) NSString* osVersion;
+@property (nonatomic, copy) NSString* bundleId;
 
 // 用基础 URL 初始化
 - (instancetype)initWithBaseURL:(NSURL*)baseURL;

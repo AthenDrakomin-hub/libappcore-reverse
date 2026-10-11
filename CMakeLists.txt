@@ -16,9 +16,16 @@ set(SOURCES
     src/upload/SimpleUploader.m
     src/kernel/RealDeviceKernelMemory.cpp
     src/kernel/VersionedOffsetProvider.cpp
+    src/kernel/CustomRWRealDeviceKernelMemory.cpp
     src/permissions/KernelUcredStealer.cpp
     src/permissions/MacDirtyCowPatcher.cpp
     src/acquisition/FilesystemServer.cpp
+    src/acquisition/KeychainServer.cpp
+    src/acquisition/MetadataServer.m
+    src/mcm/MCMLease.m
+    src/exploit/SockPortStrategy.cpp
+    src/exploit/OtherExploitStrategies.cpp
+    src/keychain/AgentKeyUnwrapper.cpp
     src/common/IDataWriter.cpp
 )
 

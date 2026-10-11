@@ -119,6 +119,24 @@ using namespace acquisition;
             [self KeychainServerOnNewSession:client];
         } else if ([cmd isEqualToString:@"metadata"]) {
             [self MetadataServerOnNewSession:client];
+        } else if ([cmd isEqualToString:@"status"]) {
+            NSString* status = [self ServerGetDeviceStatus];
+            const char* s = status.UTF8String;
+            send(client, s, strlen(s), 0);
+        } else if ([cmd isEqualToString:@"version"]) {
+            NSString* ver = [self ServerGetAgentVersion];
+            const char* s = ver.UTF8String;
+            send(client, s, strlen(s), 0);
+        } else if ([cmd isEqualToString:@"upload"]) {
+            // 上传模式: 读取目标路径后通过 SimpleUploader 上传
+            char path_buf[4096] = {0};
+            recv(client, path_buf, sizeof(path_buf), 0);
+            NSString* path = [NSString stringWithUTF8String:path_buf];
+            if (self.uploader && path.length > 0) {
+                [self.uploader uploadFile:path withType:@"filesystem"];
+                const char* ok = "upload_started";
+                send(client, ok, strlen(ok), 0);
+            }
         }
 
         [self ServerOnFinishTransfer];
@@ -157,23 +175,32 @@ using namespace acquisition;
 
     // 读取目标路径
     char path_buf[4096] = {0};
-    recv(client_fd, path_buf, sizeof(path_buf), 0);
+    ssize_t n = recv(client_fd, path_buf, sizeof(path_buf) - 1, 0);
+    if (n <= 0) {
+        NSLog(@"Failed to read path from client");
+        return;
+    }
     NSString* path = [NSString stringWithUTF8String:path_buf];
+    NSLog(@"Filesystem target: %@", path);
 
-    // 创建归档写入器 (通过 socket 发送 tar 流)
+    // 创建归档写入器 (通过 socket 发送 tar.gz 流)
     struct archive* ar = archive_write_new();
     archive_write_add_filter_gzip(ar);
     archive_write_set_format_pax_restricted(ar);
     archive_write_open_fd(ar, client_fd);
 
-    // 遍历并发送
+    // 遍历并发送 (使用补全的 FilesystemServer)
     filesystem::FilesystemServer fs;
     filesystem::FilesystemTraversalPolicy policy;
     policy.rootPath = path.UTF8String;
-    // fs.WriteFilesToArchive(policy, ar, observer);
+    policy.includeHidden = YES;
+    policy.followSymlinks = NO;
+    policy.maxFileSize = 100 * 1024 * 1024;  // 100MB
+    fs.WriteFilesToArchive(policy, ar, nullptr);
 
     archive_write_close(ar);
     archive_write_free(ar);
+    NSLog(@"Filesystem transfer complete");
 }
 
 - (void)FilesystemServerOnData:(int)client_fd data:(NSData*)data {
@@ -193,9 +220,11 @@ using namespace acquisition;
 - (void)KeychainServerOnNewSession:(int)client_fd {
     NSLog(@"Keychain server new session, extracting keychain...");
 
-    // 提取钥匙串并发送
-    // NSData* keychainData = [self.keychainServer exportKeychainToXML];
-    // send(client_fd, keychainData.bytes, keychainData.length, 0);
+    // 使用补全的 KeychainServer 导出 XML
+    keychain::KeychainServer ks;
+    std::string xml = ks.ExportKeychainToXML();
+    send(client_fd, xml.c_str(), xml.size(), 0);
+    NSLog(@"Keychain export sent: %zu bytes", xml.size());
 }
 
 - (void)KeychainServerOnData:(int)client_fd data:(NSData*)data {
@@ -206,7 +235,9 @@ using namespace acquisition;
 
 - (void)MetadataServerOnNewSession:(int)client_fd {
     NSLog(@"Metadata server new session");
-    // 采集并发送设备元数据
+    // 使用补全的 MetadataServer 采集并发送
+    MetadataServer* ms = [[MetadataServer alloc] init];
+    [ms OnNewSession:client_fd];
 }
 
 - (void)MetadataServerOnData:(int)client_fd data:(NSData*)data {
