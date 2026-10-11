@@ -14,6 +14,12 @@ set(SOURCES
     src/autorun.mm
     src/server/AcqViewCntrlr.mm
     src/upload/SimpleUploader.m
+    src/kernel/RealDeviceKernelMemory.cpp
+    src/kernel/VersionedOffsetProvider.cpp
+    src/permissions/KernelUcredStealer.cpp
+    src/permissions/MacDirtyCowPatcher.cpp
+    src/acquisition/FilesystemServer.cpp
+    src/common/IDataWriter.cpp
 )
 
 # 头文件目录
