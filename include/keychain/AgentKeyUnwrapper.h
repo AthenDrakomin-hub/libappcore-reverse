@@ -32,6 +32,9 @@ public:
     // 初始化 (启动 AppleKeyStore 客户端)
     bool Initialize();
 
+    // 是否已初始化
+    bool IsInitialized() const { return initialized_; }
+
     // 解包 AKS 包装密钥
     bool UnwrapKey(const AKSWrappedKey* wrapped, uint8_t** out_key, size_t* out_len);
 
@@ -47,6 +50,21 @@ public:
 
     // 加载元数据密钥 (类密钥)
     void LoadMetadataKeys();
+
+    // 从 keychain-2.db 的 metadatakeys 表加载并解包所有 class key
+    // sqlite_handle: sqlite3* 数据库句柄
+    bool LoadMetadataKeysFromDB(void* sqlite_handle);
+
+    // 获取已加载的 class key (返回 32 字节 AES-256 key)
+    const uint8_t* GetClassKey(int keyclass) const;
+
+    // 解包指定 keyclass 的密钥
+    bool UnwrapKeyWithClass(uint32_t keyclass,
+                            const void* wrapped, size_t wrapped_len,
+                            uint8_t* unwrapped, size_t* unwrapped_len);
+
+    // 获取设备锁屏状态 (0x1=从未解锁, 0x4=已解锁, 0x5=已锁定, 0x6=无密码)
+    int GetLockState();
 
     // 获取原始钥匙串数据库路径
     static const char* GetRawKeychainPath();

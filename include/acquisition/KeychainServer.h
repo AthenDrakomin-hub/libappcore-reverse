@@ -1,8 +1,11 @@
 // KeychainServer.h - 钥匙串提取服务器
 // 逆向自 libappcore.dylib (acquisition + keychain 命名空间)
+// 完整解密: AKS KeyUnwrap + AES-256-GCM
 #pragma once
 #include <string>
 #include <sqlite3.h>
+
+namespace keychain { class AgentKeyUnwrapper; }
 
 namespace keychain {
 
@@ -58,14 +61,24 @@ public:
     int GetKeychainDbItemsCount(sqlite3* db);
 
 private:
-    // 导出单个表
-    void ExportTableToXML(sqlite3* db, const char* table, class IDataWriter* writer);
+    // 导出单个表为 XML 字符串
+    std::string ExportTableToXMLString(sqlite3* db, const char* table, bool decrypt);
 
-    // 解密钥匙串项
+    // 解密钥匙串项 (入口)
     std::string DecryptKeychainItem(const void* encrypted, size_t len);
+
+    // iOS 4 解密 (AES-CBC, 硬编码密钥)
+    std::string DecryptBlobV4(const uint8_t* data, size_t len);
+
+    // iOS 5+ 解密 (AKS unwrap + AES-GCM)
+    std::string DecryptBlobV5Plus(const uint8_t* data, size_t len, uint32_t version);
+
+    // Base64 编码
+    static std::string Base64Encode(const void* data, size_t len);
 
     KeychainVersion version_;
     std::string tmp_dir_;
+    AgentKeyUnwrapper* unwrapper_;
 };
 
 } // namespace keychain
