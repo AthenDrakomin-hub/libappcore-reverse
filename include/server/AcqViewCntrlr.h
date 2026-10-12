@@ -2,7 +2,7 @@
 // 逆向自 libappcore.dylib (AcqViewCntrlr_ 类)
 #pragma once
 #import <UIKit/UIKit.h>
-#import "SimpleUploader.h"
+#import "upload/SimpleUploader.h"
 
 @class FilesystemServer;
 @class KeychainServer;

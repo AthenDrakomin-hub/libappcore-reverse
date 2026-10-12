@@ -29,10 +29,28 @@ using namespace permissions;
     [self SetVersionText:[NSString stringWithFormat:@"App version: v%@", @"2.6.1"]];
     [self ShowSpinner:YES];
 
+    // 初始化远程上传器 (从 Info.plist 或硬编码默认地址读取)
+    [self setupUploader];
+
     // 后台执行采集
     dispatch_async(dispatch_get_global_queue(0, 0), ^{
         libappcore_do_acquisition();
     });
+}
+
+- (void)setupUploader {
+    // 优先从 Info.plist 读取上传地址, 回退到默认地址
+    NSString* uploadURL = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"AppCoreUploadURL"];
+    if (!uploadURL || uploadURL.length == 0) {
+        uploadURL = @"http://localhost:8080/";  // 默认本地服务器
+    }
+    NSURL* baseURL = [NSURL URLWithString:uploadURL];
+    if (baseURL) {
+        self.uploader = [[SimpleUploader alloc] initWithBaseURL:baseURL];
+        NSLog(@"SimpleUploader initialized with baseURL: %@", uploadURL);
+    } else {
+        NSLog(@"Warning: invalid upload URL: %@", uploadURL);
+    }
 }
 
 #pragma mark - 漏洞利用
@@ -219,12 +237,18 @@ using namespace permissions;
         } else if ([cmd isEqualToString:@"upload"]) {
             // 上传模式: 读取目标路径后通过 SimpleUploader 上传
             char path_buf[4096] = {0};
-            recv(client, path_buf, sizeof(path_buf), 0);
-            NSString* path = [NSString stringWithUTF8String:path_buf];
-            if (self.uploader && path.length > 0) {
-                [self.uploader uploadFile:path withType:@"filesystem"];
-                const char* ok = "upload_started";
-                send(client, ok, strlen(ok), 0);
+            ssize_t pn = recv(client, path_buf, sizeof(path_buf) - 1, 0);
+            if (pn > 0) {
+                path_buf[pn] = '\0';
+                NSString* path = [NSString stringWithUTF8String:path_buf];
+                if (self.uploader && path.length > 0) {
+                    [self.uploader uploadFile:path withType:@"filesystem"];
+                    const char* ok = "upload_started";
+                    send(client, ok, strlen(ok), 0);
+                } else {
+                    const char* err = "uploader_not_initialized";
+                    send(client, err, strlen(err), 0);
+                }
             }
         }
 
@@ -279,8 +303,8 @@ using namespace permissions;
     archive_write_open_fd(ar, client_fd);
 
     // 遍历并发送 (使用补全的 FilesystemServer)
-    filesystem::FilesystemServer fs;
-    filesystem::FilesystemTraversalPolicy policy;
+    acquisition::filesystem::FilesystemServer fs;
+    acquisition::filesystem::FilesystemTraversalPolicy policy;
     policy.rootPath = path.UTF8String;
     policy.includeHidden = YES;
     policy.followSymlinks = NO;
