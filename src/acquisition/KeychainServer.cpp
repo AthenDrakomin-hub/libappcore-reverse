@@ -44,11 +44,152 @@ enum {
 };
 
 // ============================================================================
-// AES Key Unwrap (RFC 3394)
-// 用 class_key (KEK) 解包 per-row wrapped key
-// 输入: kek(32字节), wrapped(40字节 = IV(8) + key(32))
-// 输出: unwrapped(32字节)
+// 钥匙串版本7/8 NSKeyedArchiver bplist 解析
+// 扫描 bplist 中的 NSData (0x40-0x4F) 和 NSInteger (0x10-0x1F) 对象
+// 提取 keyclass (1-6) 和 wrappedKey (40字节)
 // ============================================================================
+struct BlobV7Fields {
+    uint32_t keyclass;
+    const uint8_t* wrapped_key;
+    size_t wrapped_len;
+    const uint8_t* ciphertext;
+    size_t ciphertext_len;
+};
+
+static bool parse_bplist_int(const uint8_t* p, size_t len, size_t* offset, uint64_t* out_val) {
+    if (*offset >= len) return false;
+    uint8_t marker = p[*offset];
+    if ((marker & 0xF0) != 0x10) return false;  // NSInteger
+    uint8_t nibble = marker & 0x0F;
+    size_t int_len = (nibble == 0xF) ? 0 : (1ULL << nibble);
+    if (int_len == 0 || *offset + 1 + int_len > len) return false;
+    uint64_t val = 0;
+    for (size_t i = 0; i < int_len; i++) {
+        val = (val << 8) | p[*offset + 1 + i];
+    }
+    *offset += 1 + int_len;
+    *out_val = val;
+    return true;
+}
+
+static bool parse_bplist_data(const uint8_t* p, size_t len, size_t* offset,
+                               const uint8_t** out_data, size_t* out_len) {
+    if (*offset >= len) return false;
+    uint8_t marker = p[*offset];
+    if ((marker & 0xF0) != 0x40) return false;  // NSData
+    uint8_t nibble = marker & 0x0F;
+    size_t data_len = 0;
+    size_t header_len = 1;
+    if (nibble < 0xF) {
+        data_len = nibble;
+    } else {
+        // 长度是后续整数
+        size_t int_off = *offset + 1;
+        uint64_t int_val = 0;
+        if (!parse_bplist_int(p, len, &int_off, &int_val)) return false;
+        data_len = (size_t)int_val;
+        header_len = int_off - *offset;
+    }
+    if (*offset + header_len + data_len > len) return false;
+    *out_data = p + *offset + header_len;
+    *out_len = data_len;
+    *offset += header_len + data_len;
+    return true;
+}
+
+static bool parse_keychain_blob_v7(const uint8_t* data, size_t len, BlobV7Fields* fields) {
+    if (!data || !fields || len < 12) return false;
+    memset(fields, 0, sizeof(*fields));
+
+    // data[0..3] = version, data[4..] = bplist
+    const uint8_t* bplist = data + 4;
+    size_t bplist_len = len - 4;
+
+    // 验证 bplist 头部
+    if (bplist_len < 8 || memcmp(bplist, "bplist", 6) != 0) {
+        // 不是标准 bplist, 回退到固定布局
+        return false;
+    }
+
+    // 扫描所有对象, 提取 NSInteger (1-6) 和 NSData (40字节 = wrappedKey)
+    size_t offset = 8;  // 跳过 "bplist00"
+    const uint8_t* wrapped_key = nullptr;
+    size_t wrapped_len = 0;
+    uint32_t keyclass = 0;
+    const uint8_t* ciphertext = nullptr;
+    size_t ciphertext_len = 0;
+
+    while (offset < bplist_len - 26) {  // 至少需要 marker + 一些数据
+        uint8_t marker = bplist[offset];
+
+        if ((marker & 0xF0) == 0x10) {
+            // NSInteger - 可能是 keyclass
+            size_t save = offset;
+            uint64_t val = 0;
+            if (parse_bplist_int(bplist, bplist_len, &offset, &val)) {
+                if (val >= 1 && val <= 6) {
+                    keyclass = (uint32_t)val;
+                }
+            } else {
+                offset = save + 1;
+            }
+        } else if ((marker & 0xF0) == 0x40) {
+            // NSData
+            size_t save = offset;
+            const uint8_t* d = nullptr;
+            size_t dlen = 0;
+            if (parse_bplist_data(bplist, bplist_len, &offset, &d, &dlen)) {
+                if (dlen == 40 && wrapped_key == nullptr) {
+                    // 40字节 = wrapped key (AES key wrap 输出)
+                    wrapped_key = d;
+                    wrapped_len = dlen;
+                } else if (dlen > 48 && ciphertext == nullptr) {
+                    // 大于48字节 = ciphertext (含IV+tag+data)
+                    ciphertext = d;
+                    ciphertext_len = dlen;
+                }
+            } else {
+                offset = save + 1;
+            }
+        } else if ((marker & 0xF0) == 0x50 || (marker & 0xF0) == 0x60) {
+            // NSString - 跳过
+            uint8_t nibble = marker & 0x0F;
+            if (nibble < 0xF) {
+                offset += 1 + nibble * ((marker & 0xF0) == 0x60 ? 2 : 1);
+            } else {
+                offset += 1;  // 简化, 跳过长度整数
+            }
+        } else if (marker == 0x00 || marker == 0x08 || marker == 0x09) {
+            // null / false / true
+            offset += 1;
+        } else if ((marker & 0xF0) == 0xA0 || (marker & 0xF0) == 0x80) {
+            // NSDictionary / NSArray - 只跳过 marker, 内容会在后续扫描中处理
+            offset += 1;
+        } else if ((marker & 0xF0) == 0x70) {
+            // UID (NSKeyedArchiver 类引用) - 跳过
+            uint8_t nibble = marker & 0x0F;
+            offset += 1 + (nibble + 1);
+        } else {
+            offset += 1;
+        }
+    }
+
+    if (wrapped_key && keyclass > 0) {
+        fields->keyclass = keyclass;
+        fields->wrapped_key = wrapped_key;
+        fields->wrapped_len = wrapped_len;
+        // IV 和 tag: 如果 ciphertext 存在, 前16字节IV, 接下来16字节tag
+        // 否则 wrapped_key 之后是 IV+tag+ciphertext
+        if (ciphertext && ciphertext_len >= 32) {
+            fields->ciphertext = ciphertext + 32;  // 跳过 IV(16) + tag(16)
+            fields->ciphertext_len = ciphertext_len - 32;
+            // IV 和 tag 需要单独存储, 这里用局部变量传递
+            // 注意: 调用者需要从 ciphertext 前32字节提取 IV 和 tag
+        }
+        return true;
+    }
+    return false;
+}
 static bool aes_key_unwrap(const uint8_t* kek, size_t kek_len,
                            const uint8_t* wrapped, size_t wrapped_len,
                            uint8_t* unwrapped, size_t* unwrapped_len) {
@@ -389,38 +530,48 @@ std::string KeychainServer::DecryptBlobV5Plus(const uint8_t* data, size_t len, u
     size_t ciphertext_len = 0;
 
     if (version == 7 || version == 8) {
-        // 版本 7/8: NSKeyedArchiver 格式, 特征搜索
-        if (len < 48) return "";
-        for (size_t i = 4; i < len - 48; i++) {
-            if (data[i] >= 0x10 && data[i] <= 0x16) {
-                uint32_t kc = data[i] - 0x10;
-                if (kc >= 1 && kc <= 6 && i + 1 < len && data[i + 1] == 0x44) {
-                    keyclass = kc;
-                    size_t wk_offset = i + 2;
-                    if (wk_offset + 40 <= len) {
-                        wrapped_key = data + wk_offset;
-                        wrapped_len = 40;
-                        break;
-                    }
+        // 版本 7/8: NSKeyedArchiver bplist 格式
+        BlobV7Fields v7;
+        if (parse_keychain_blob_v7(data, len, &v7)) {
+            keyclass = v7.keyclass;
+            wrapped_key = v7.wrapped_key;
+            wrapped_len = v7.wrapped_len;
+            // bplist 中 ciphertext NSData 前32字节 = IV(16) + tag(16)
+            // parse_keychain_blob_v7 已将 ciphertext 指针跳过前32字节
+            // 但 IV 和 tag 需要从原始 ciphertext 前面取
+            // 重新计算: v7.ciphertext 指向 ciphertext+32
+            if (v7.ciphertext && v7.ciphertext_len > 0) {
+                iv = v7.ciphertext - 32;   // IV 在 ciphertext 前16字节
+                tag = v7.ciphertext - 16;  // tag 在 ciphertext 前16字节, IV之后
+                ciphertext = v7.ciphertext;
+                ciphertext_len = v7.ciphertext_len;
+            } else {
+                // 没有单独的 ciphertext NSData, 回退到 wrapped_key 之后布局
+                iv = wrapped_key + wrapped_len;
+                tag = iv + 16;
+                ciphertext = tag + 16;
+                if (ciphertext <= data + len) {
+                    ciphertext_len = (data + len) - ciphertext;
                 }
             }
         }
         if (!wrapped_key) {
-            // 回退到固定布局
+            // bplist 解析失败, 回退到固定布局
             if (len >= 88) {
                 keyclass = (data[8] << 24) | (data[9] << 16) | (data[10] << 8) | data[11];
                 wrapped_len = (data[12] << 24) | (data[13] << 16) | (data[14] << 8) | data[15];
                 if (wrapped_len > 0 && wrapped_len <= 64) {
                     wrapped_key = data + 16;
+                    iv = data + 16 + wrapped_len;
+                    tag = iv + 16;
+                    ciphertext = tag + 16;
+                    if (ciphertext <= data + len) {
+                        ciphertext_len = (data + len) - ciphertext;
+                    }
                 }
             }
         }
-        if (!wrapped_key) return "";
-        iv = wrapped_key + wrapped_len;
-        tag = iv + 16;
-        ciphertext = tag + 16;
-        if (ciphertext > data + len) return "";
-        ciphertext_len = (data + len) - ciphertext;
+        if (!wrapped_key || ciphertext_len == 0) return "";
     } else {
         // 版本 5/6: 固定布局
         if (len < 88) return "";

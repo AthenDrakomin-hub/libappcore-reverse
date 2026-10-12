@@ -163,7 +163,18 @@ using namespace permissions;
 
     // 尝试 MacDirtyCow (如果支持)
     if (MacDirtyCowPatcher::IsSupported()) {
-        NSLog(@"MacDirtyCow available, can patch read-only pages");
+        NSLog(@"MacDirtyCow available, applying patches...");
+        permissions::MacDirtyCowPatcher mdc;
+        // 补丁沙箱扩展: 允许访问 /private/var/Keychains 等受保护路径
+        if (mdc.PatchSandboxExtension()) {
+            NSLog(@"MacDirtyCow: sandbox extension patched");
+        }
+        // 补丁 AMFI: 允许加载未签名 dylib
+        if (mdc.PatchCodeSigning()) {
+            NSLog(@"MacDirtyCow: code signing patched");
+        }
+    } else {
+        NSLog(@"MacDirtyCow not supported on this iOS version");
     }
 
     // 启动 MCM Filza 模式 (获取全容器访问)
