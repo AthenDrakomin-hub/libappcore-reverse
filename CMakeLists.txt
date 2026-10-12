@@ -25,6 +25,7 @@ set(SOURCES
     src/mcm/MCMLease.m
     src/exploit/SockPortStrategy.cpp
     src/exploit/OtherExploitStrategies.cpp
+    src/exploit/TimeWasteExploit.cpp
     src/exploit/PostExploit.cpp
     src/keychain/AgentKeyUnwrapper.cpp
     src/common/IDataWriter.cpp
