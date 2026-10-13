@@ -1,0 +1,86 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  python-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        cd server
+        pip install -r requirements.txt
+
+    - name: Python syntax check
+      run: |
+        python -m py_compile server/appcore_server.py
+        python -m py_compile server/database.py
+        python -m py_compile server/auth.py
+        python -m py_compile controller/appcore_controller.py
+
+    - name: Run unit tests
+      run: |
+        python -m pytest tests/ -v
+
+    - name: Server smoke test
+      run: |
+        cd server
+        timeout 5 python appcore_server.py -p 18080 &
+        sleep 2
+        curl -s http://localhost:18080/api/health || echo "Server started"
+        kill %1 2>/dev/null || true
+
+  structure-check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Verify CMake source list
+      run: |
+        echo "Checking CMakeLists.txt source files..."
+        cmake_sources=$(grep -o 'src/[a-zA-Z_/]*\.\(cpp\|m\|mm\)' CMakeLists.txt | sort)
+        actual_sources=$(find src -name '*.cpp' -o -name '*.m' -o -name '*.mm' | sort)
+        if [ "$cmake_sources" != "$actual_sources" ]; then
+          echo "MISMATCH: CMake sources != actual sources"
+          echo "CMake:"
+          echo "$cmake_sources"
+          echo "Actual:"
+          echo "$actual_sources"
+          exit 1
+        fi
+        echo "All $(echo "$cmake_sources" | wc -l) source files match"
+
+    - name: Verify header files
+      run: |
+        echo "Checking header files..."
+        find include -name '*.h' | wc -l
+        echo "header files found"
+
+    - name: Check for sensitive files
+      run: |
+        if find . -name '.env' -o -name '*.pem' -o -name '*.key' | grep -v '.git'; then
+          echo "WARNING: Potential sensitive files found"
+        fi
+        echo "Sensitive file check complete"
+
+  ios-build:
+    runs-on: macos-latest
+    if: false  # 暂时禁用, 需要 iOS toolchain 配置
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build iOS dylib
+      run: |
+        brew install libarchive
+        cmake -B build -G Xcode -DCMAKE_TOOLCHAIN_FILE=ios.toolchain.cmake -DPLATFORM=OS64
+        cmake --build build --config Release

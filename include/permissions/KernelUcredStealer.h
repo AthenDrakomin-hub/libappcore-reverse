@@ -20,10 +20,12 @@ public:
     uint64_t FindCurrentProc(kernel::IKernelMemory* km, kernel::IOffsetProvider* offsets);
 
     // 备份原始 ucred (用于恢复)
-    void BackupUcred(kernel::IKernelMemory* km, uint64_t ucred);
+    void BackupUcred(kernel::IKernelMemory* km, uint64_t ucred,
+                     kernel::IOffsetProvider* offsets);
 
     // 恢复原始 ucred
-    void RestoreUcred(kernel::IKernelMemory* km, uint64_t ucred);
+    void RestoreUcred(kernel::IKernelMemory* km, uint64_t ucred,
+                      kernel::IOffsetProvider* offsets);
 
 private:
     // 修改 UID/GID 为 0

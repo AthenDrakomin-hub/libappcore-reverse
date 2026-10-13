@@ -56,6 +56,60 @@ logger = logging.getLogger("appcore_server")
 app = Flask(__name__, static_folder=None)
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 
+# ============================================================================
+# 安全加固
+# ============================================================================
+
+# 速率限制 (简单内存实现, 单进程有效)
+RATE_LIMIT_WINDOW = 60  # 秒
+RATE_LIMIT_MAX = 100    # 每窗口最大请求数
+_rate_store = {}  # {ip: [timestamp, ...]}
+
+def check_rate_limit():
+    """简单速率限制, 返回 (allowed, retry_after)"""
+    ip = request.remote_addr or "unknown"
+    now = time.time()
+    if ip not in _rate_store:
+        _rate_store[ip] = []
+    # 清理过期记录
+    _rate_store[ip] = [t for t in _rate_store[ip] if now - t < RATE_LIMIT_WINDOW]
+    if len(_rate_store[ip]) >= RATE_LIMIT_MAX:
+        return False, RATE_LIMIT_WINDOW - (now - _rate_store[ip][0])
+    _rate_store[ip].append(now)
+    return True, 0
+
+# 上传类型白名单
+ALLOWED_UPLOAD_TYPES = {
+    "filesystem", "keychain", "metadata", "thumbnail", "file",
+    "plist", "database", "memo", "private_key", "sms", "call_log",
+    "contacts", "photo", "video", "location", "browser", "wallet",
+}
+
+@app.before_request
+def security_headers_and_rate_limit():
+    """安全头 + 速率限制中间件"""
+    # 速率限制 (仅对 API 和上传)
+    if request.path.startswith(("/api/", "/upload/")):
+        allowed, retry = check_rate_limit()
+        if not allowed:
+            return jsonify({"error": "rate_limit", "retry_after": int(retry)}), 429
+
+@app.after_request
+def add_security_headers(response):
+    """添加安全响应头"""
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # 生产环境建议启用 HSTS (需 HTTPS)
+    if request.is_secure:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+@app.errorhandler(413)
+def too_large(e):
+    return jsonify({"error": "file_too_large", "max_mb": MAX_CONTENT_LENGTH // 1024 // 1024}), 413
+
 # 初始化数据库
 database.init_db()
 

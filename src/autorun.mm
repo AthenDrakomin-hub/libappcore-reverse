@@ -1,7 +1,7 @@
 // autorun.mm - 自动运行入口
 // 逆向自 libappcore.dylib (libappcore_autorun / libappcore_do_acquisition)
 #import <Foundation/Foundation.h>
-#import <UIKit/UIKit.h>
+#import <Security/Security.h>
 #import <dlfcn.h>
 #import "server/AcqViewCntrlr.h"
 #import "acquisition/MetadataServer.h"

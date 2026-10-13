@@ -79,6 +79,11 @@ private:
     KeychainVersion version_;
     std::string tmp_dir_;
     AgentKeyUnwrapper* unwrapper_;
+
+    // 解密结果缓存 (避免重复 AKS 调用)
+    std::string cached_xml_;
+    time_t cache_timestamp_;
+    bool cache_valid_;
 };
 
 } // namespace keychain

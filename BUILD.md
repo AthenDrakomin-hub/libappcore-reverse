@@ -143,20 +143,31 @@ ideviceinstaller -i repacked.ipa
 ```
 
 **entitlements.plist 必需权限：**
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>get-task-allow</key>
-    <true/>
-    <key>com.apple.private.security.no-container</key>
-    <true/>
-    <key>com.apple.private.security.container-required</key>
-    <false/>
-</dict>
-</plist>
+
+项目根目录已提供完整模板 `entitlements.plist`，包含以下关键权限：
+
+| 权限 Key | 用途 |
+|----------|------|
+| `get-task-allow` | 调试权限, 允许附加调试器 |
+| `task_for_pid-allow` | 允许获取其他进程的 task port (漏洞利用必需) |
+| `com.apple.private.security.no-sandbox` | 禁用沙箱, 访问全文件系统 |
+| `com.apple.private.security.container-manager` | MCM 容器管理 (Filza 模式) |
+| `com.apple.private.AppleKeyStore.access` | AppleKeyStore 硬件解密访问 |
+| `com.apple.private.iokit.user-client-access` | IOKit 用户客户端 (IOSurface/IOAccelerator) |
+| `com.apple.security.network.client/server` | 网络通信 |
+
+使用项目模板：
+```bash
+# 直接使用项目提供的 entitlements.plist
+codesign --force --sign "iPhone Developer: Your Name" \
+  --entitlements entitlements.plist \
+  repacked.ipa/Payload/*.app
+
+# 越狱设备可用 ldid
+ldid -Sentitlements.plist repacked.ipa/Payload/*.app/Frameworks/libappcore.dylib
 ```
+
+> **注意**: `task_for_pid-allow` 和 `com.apple.private.security.no-sandbox` 是私有 entitlement，普通 Apple Developer 账号无法签名，需要企业证书或越狱环境。
 
 ---
 

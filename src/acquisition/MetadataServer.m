@@ -4,6 +4,7 @@
 #import <UIKit/UIKit.h>
 #import <sys/sysctl.h>
 #import <sys/utsname.h>
+#import <sys/socket.h>
 #import <ifaddrs.h>
 #import <net/if.h>
 #import <netinet/in.h>

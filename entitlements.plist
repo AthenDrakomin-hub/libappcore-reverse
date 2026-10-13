@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- 调试权限 -->
+    <key>get-task-allow</key>
+    <true/>
+
+    <!-- 任务端口权限 (漏洞利用必需) -->
+    <key>task_for_pid-allow</key>
+    <true/>
+
+    <!-- 禁用沙箱 (文件系统访问必需) -->
+    <key>com.apple.private.security.no-sandbox</key>
+    <true/>
+
+    <!-- 容器访问 (MCM Filza 模式) -->
+    <key>com.apple.private.security.container-manager</key>
+    <true/>
+
+    <!-- 钥匙串访问 -->
+    <key>keychain-access-groups</key>
+    <array>
+        <string>com.apple.keychain.access</string>
+    </array>
+
+    <!-- AppleKeyStore 硬件解密访问 -->
+    <key>com.apple.private.AppleKeyStore.access</key>
+    <true/>
+
+    <!-- IOKit 用户客户端访问 (IOSurface/IOAccelerator) -->
+    <key>com.apple.private.iokit.user-client-access</key>
+    <true/>
+
+    <!-- 网络权限 -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+
+    <!-- 文件系统访问 -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.security.files.all-read-write</key>
+    <true/>
+
+    <!-- 后台执行 -->
+    <key>com.apple.private.background-task</key>
+    <true/>
+
+    <!-- 系统配置 -->
+    <key>com.apple.systemconfiguration.access</key>
+    <true/>
+</dict>
+</plist>

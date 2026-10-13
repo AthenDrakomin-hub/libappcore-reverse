@@ -262,7 +262,8 @@ static bool aes_key_unwrap(const uint8_t* kek, size_t kek_len,
 }
 
 KeychainServer::KeychainServer()
-    : version_(kKeychainV11), tmp_dir_("/tmp/keychain_extract") {
+    : version_(kKeychainV11), tmp_dir_("/tmp/keychain_extract"),
+      cache_timestamp_(0), cache_valid_(false) {
     unwrapper_ = nullptr;
 }
 
@@ -325,6 +326,17 @@ void KeychainServer::CopyKeychainDBToTmpDirect() {
 }
 
 std::string KeychainServer::ExportKeychainToXML() {
+    // 缓存检查: 如果数据库未修改且缓存有效, 直接返回
+    const char* keychain_path = "/private/var/Keychains/keychain-2.db";
+    struct stat st;
+    if (cache_valid_ && stat(keychain_path, &st) == 0) {
+        if (st.st_mtime <= cache_timestamp_) {
+            printf("[*] KeychainServer: using cached XML (db unchanged)\n");
+            return cached_xml_;
+        }
+        printf("[*] KeychainServer: cache expired (db modified), re-decrypting\n");
+    }
+
     std::string result = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
     result += "<keychain_export>\n";
 
@@ -367,6 +379,17 @@ std::string KeychainServer::ExportKeychainToXML() {
 
     sqlite3_close(db);
     result += "</keychain_export>\n";
+
+    // 保存缓存
+    cached_xml_ = result;
+    if (stat(keychain_path, &st) == 0) {
+        cache_timestamp_ = st.st_mtime;
+    } else {
+        cache_timestamp_ = time(nullptr);
+    }
+    cache_valid_ = true;
+    printf("[+] KeychainServer: XML cached (%zu bytes)\n", result.size());
+
     return result;
 }
 

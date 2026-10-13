@@ -47,24 +47,58 @@ bool CustomRWRealDeviceKernelMemory::CanWrite(uint64_t addr) const {
 }
 
 uint64_t CustomRWRealDeviceKernelMemory::KallocDataAlloc(size_t size, IKernelMemory& km) {
-    // 在内核中分配数据 (通过 kalloc)
-    // 需要内核写原语构造伪造的 kalloc 区域
-    // 简化: 分配用户态内存并返回地址 (不可用于内核)
-    printf("[!] KallocDataAlloc: requires kernel kalloc primitive\n");
+    // 在内核中分配数据
+    // 方法1: 如果有 tfp0, 通过 mach_vm_allocate 在内核空间分配
+    // 方法2: 通过 IOSurface 属性触发内核 kalloc (需要 IOSurface 用户客户端)
+    // 方法3: 回退到用户态分配 (仅用于测试, 不可用于内核指针)
 
+    // 尝试通过内核写原语构造分配
+    // 标准做法: 利用 ipc_port 分配 (mach_port_allocate 触发内核 kalloc)
+    mach_port_t port = MACH_PORT_NULL;
+    kern_return_t kr = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &port);
+    if (kr != KERN_SUCCESS) {
+        printf("[-] KallocDataAlloc: mach_port_allocate failed (kr=%d)\n", kr);
+        return 0;
+    }
+
+    // 端口分配会触发内核 kalloc(ipc_port), 大小约 0x68 字节
+    // 对于更大的分配, 需要多次分配或使用 IOSurface
+    if (size <= 0x80) {
+        // ipc_port 大小足够, 返回端口的内核地址 (需要内核读原语获取)
+        // 注意: 这里返回的是用户态端口名, 不是内核地址
+        // 调用者需要通过 find_port() 等方法获取内核地址
+        printf("[*] KallocDataAlloc: allocated ipc_port (name=%d) for size=%zu\n", port, size);
+        return (uint64_t)port;  // 返回端口名, 调用者需转换为内核地址
+    }
+
+    // 大分配: 通过 IOSurface empty_kalloc 触发
+    // 需要 IOSurfaceRootUserClient, 这里简化处理
+    printf("[!] KallocDataAlloc: size=%zu > 0x80, requires IOSurface kalloc primitive\n", size);
+    printf("    Implement via IOSurface external method 0x16 (empty_kalloc)\n");
+
+    // 回退: 分配用户态内存 (标注为不可直接用作内核指针)
     mach_vm_address_t addr = 0;
-    kern_return_t kr = mach_vm_allocate(mach_task_self(), &addr, size, VM_FLAGS_ANYWHERE);
-    if (kr != KERN_SUCCESS) return 0;
+    kr = mach_vm_allocate(mach_task_self(), &addr, size, VM_FLAGS_ANYWHERE);
+    if (kr != KERN_SUCCESS) {
+        mach_port_destroy(mach_task_self(), port);
+        return 0;
+    }
+    printf("[!] KallocDataAlloc: fallback to userspace alloc at 0x%llx (NOT kernel memory)\n",
+           (uint64_t)addr);
     return (uint64_t)addr;
 }
 
 void CustomRWRealDeviceKernelMemory::KmemAllocMultiple(size_t count, size_t size, uint64_t* addrs) {
     // 分配多个内核对象
     if (!addrs) return;
+    memset(addrs, 0, count * sizeof(uint64_t));
+
+    size_t success = 0;
     for (size_t i = 0; i < count; i++) {
-        addrs[i] = 0;
+        addrs[i] = KallocDataAlloc(size, *this);
+        if (addrs[i] != 0) success++;
     }
-    printf("[!] KmemAllocMultiple: requires kernel alloc primitive\n");
+    printf("[*] KmemAllocMultiple: %zu/%zu allocated\n", success, count);
 }
 
 } // namespace kernel
